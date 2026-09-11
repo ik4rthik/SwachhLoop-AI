@@ -1,0 +1,26 @@
+# ============================================================
+# SwachhLoop AI — Runtime Dependencies
+# ============================================================
+# Install with: pip install -r requirements.txt
+
+# --- Web Framework ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# --- Data Validation & Settings ---
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# --- Database (PostgreSQL-ready) ---
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+
+# --- HTTP Client (for inter-service calls, future AI service integration) ---
+httpx==0.27.2
+
+# --- Frontend ---
+streamlit==1.40.1
+
+# --- Utilities ---
+python-multipart==0.0.12   # Required for FastAPI file uploads (Phase 3+)

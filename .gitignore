@@ -1,0 +1,88 @@
+# ============================================================
+# SwachhLoop AI — .gitignore
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+ENV/
+.env_local/
+
+# --- Environment / Secrets ---
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# --- Pytest / Test Cache ---
+.pytest_cache/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# --- Linting / Type Checking ---
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# --- Jupyter / IPython ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- Uploads / Data (never commit user data) ---
+uploads/
+data/raw/
+data/processed/
+*.csv
+*.json
+!docs/*.json
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Database ---
+*.db
+*.sqlite3
