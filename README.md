@@ -261,7 +261,7 @@ pytest --asyncio-mode=auto
 | Phase | Status | Description |
 |-------|--------|-------------|
 | **Phase 1** | ✅ Complete | Project foundation, structure, config, API skeleton, service interfaces |
-| **Phase 2** | 🔲 Planned | Unified frontend — design system, auth UI, role dashboards, complaint forms |
+| **Phase 2** | ✅ Complete | Unified frontend — design system, auth UI, role dashboards, complaint forms, mock layer |
 | **Phase 3** | 🔲 Planned | AI agents — waste detection, complaint analysis, Self-Corrective RAG |
 | **Phase 4** | 🔲 Planned | Route optimization, cleanup verification, agent orchestration |
 | **Phase 5** | 🔲 Planned | Evaluation, guardrails, production hardening |
@@ -276,14 +276,15 @@ pytest --asyncio-mode=auto
 - AI service interface contracts (abstract base classes)
 - Full documentation (README + `docs/architecture.md`)
 
-### Phase 2 Scope 🔲
-- Shared design system
-- Landing page and authentication UI
-- Role-based dashboards (full layout)
-- Complaint/report interfaces
-- Maps and status timelines
-- Responsive layout
-- Prototype/demo data
+### Phase 2 Deliverables ✅
+- Glassmorphic design system (`frontend/components/design_system.py`)
+- Public landing page with CTA workflow strip and role showcases (`frontend/pages/landing.py`)
+- Authentication UI with 1-click role quick-fill demo mode (`frontend/pages/login.py`)
+- 4 Role-based dashboards: Citizen, Cleaner, Municipal Staff, Admin (`frontend/pages/`)
+- Complaint submission form with photo upload, urgency tagging, and live preview
+- Interactive status timelines, KPI cards, and SVG prototype maps
+- Mock data engine (`frontend/data/mock_data.py`) and API service client (`frontend/services/api_client.py`)
+- UI/UX Design System documentation ([`docs/ui-ux.md`](docs/ui-ux.md))
 
 ---
 

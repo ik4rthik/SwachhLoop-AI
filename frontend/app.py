@@ -1,119 +1,144 @@
 """
-SwachhLoop AI — Streamlit Frontend Entry Point
-===============================================
+SwachhLoop AI — Streamlit Application Entry Point
+==================================================
+Phase 2: Unified role-based frontend with glassmorphic design system.
+
 Run with:
     streamlit run frontend/app.py
 
-This is the main entry point for the web application.
-It handles role selection and routes users to the appropriate dashboard.
-
-Architecture (Phase 1 — placeholder routing):
+Architecture:
     app.py (this file)
-        ├── pages/citizen.py
-        ├── pages/cleaner.py
-        ├── pages/municipal_staff.py
-        └── pages/admin.py
+        ├── Landing page (public)
+        ├── Login page (shared for all roles)
+        └── Role-based dashboards (session-state auth)
+            ├── pages/citizen.py
+            ├── pages/cleaner.py
+            ├── pages/municipal_staff.py
+            └── pages/admin.py
 
-Phase 2+: Replace the role dropdown with real authentication.
+Authentication:
+    Phase 2: Demo session-state auth (mock users).
+    Phase 3: Replace authenticate_user() in services/api_client.py
+             with real JWT authentication against the FastAPI backend.
+
+Navigation:
+    Session state keys:
+        current_page_root : "landing" | "login" | "app"
+        logged_in         : bool
+        user              : dict (logged-in user data)
+        role              : str ("citizen" | "cleaner" | "municipal_staff" | "admin")
+        current_page      : str (sub-page within the role app)
+        selected_complaint: str (complaint ID for detail view)
+        selected_task     : str (task ID for detail view)
+        report_success    : bool (flag for report waste success state)
+
+Backend compatibility:
+    The FastAPI backend (backend/main.py) is completely unchanged.
+    Phase 1 endpoints (/health, /status) remain fully functional.
+    The Admin dashboard's real health check button still calls the live API.
 """
+
+import sys
+import os
+
+# ── Ensure project root is on sys.path so 'frontend.*' imports work ──────────
+# Streamlit runs scripts directly and may not include the project root.
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 import streamlit as st
 
-# ---------------------------------------------------------------------------
-# Page configuration — must be the FIRST Streamlit call
-# ---------------------------------------------------------------------------
+# ── Page config — MUST be the first Streamlit call ──────────────────────────
 st.set_page_config(
     page_title="SwachhLoop AI",
     page_icon="♻️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
-# ---------------------------------------------------------------------------
-# Inline CSS for basic branding
-# ---------------------------------------------------------------------------
-st.markdown(
-    """
-    <style>
-        /* Center the landing card */
-        .main-header {
-            text-align: center;
-            padding: 2rem 0 1rem;
-        }
-        .role-info {
-            background: #f0f7f0;
-            border-left: 4px solid #2e7d32;
-            padding: 0.75rem 1rem;
-            border-radius: 4px;
-            margin: 0.5rem 0;
-        }
-        footer {visibility: hidden;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# ── Inject design system CSS ─────────────────────────────────────────────────
+from frontend.components.design_system import inject_css
+inject_css()
 
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
-st.markdown(
-    '<div class="main-header">'
-    '<h1>♻️ SwachhLoop AI</h1>'
-    "<p><em>Autonomous Multi-Agent System for Closed-Loop Smart Civic Waste Management</em></p>"
-    "</div>",
-    unsafe_allow_html=True,
-)
+# ── Session state initialisation ─────────────────────────────────────────────
+if "current_page_root" not in st.session_state:
+    st.session_state["current_page_root"] = "landing"
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
-st.divider()
+# ── Root-level routing ───────────────────────────────────────────────────────
+root_page = st.session_state.get("current_page_root", "landing")
 
-# ---------------------------------------------------------------------------
-# Sidebar — Role selection (Phase 1 placeholder for real auth in Phase 2)
-# ---------------------------------------------------------------------------
-st.sidebar.title("SwachhLoop AI")
-st.sidebar.markdown("**Phase 1 — Foundation**")
-st.sidebar.divider()
+# Redirect to login if "goto_login" was set
+if st.session_state.pop("goto_login", False):
+    root_page = "login"
+    st.session_state["current_page_root"] = "login"
 
-st.sidebar.markdown(
-    "> ⚠️ **Note:** Role-based authentication is coming in Phase 2. "
-    "For now, select your role below to preview the dashboard skeleton."
-)
-st.sidebar.divider()
+# If logged in, always route to app (unless explicitly logging out resets state)
+if st.session_state.get("logged_in") and root_page not in ("app",):
+    root_page = "app"
+    st.session_state["current_page_root"] = "app"
 
-ROLES = {
-    "🏠  Citizen": "citizen",
-    "🧹  Cleaner": "cleaner",
-    "🏛️  Municipal Staff": "municipal_staff",
-    "⚙️  Admin": "admin",
-}
+# ── Landing page ─────────────────────────────────────────────────────────────
+if root_page == "landing":
+    # No sidebar on landing
+    st.markdown(
+        """<style>[data-testid="stSidebar"]{display:none;}</style>""",
+        unsafe_allow_html=True,
+    )
+    from frontend.pages import landing
+    landing.render()
 
-selected_label = st.sidebar.selectbox(
-    "Select your role",
-    options=list(ROLES.keys()),
-    index=0,
-)
-selected_role = ROLES[selected_label]
 
-# ---------------------------------------------------------------------------
-# Route to the appropriate dashboard page
-# ---------------------------------------------------------------------------
-if selected_role == "citizen":
-    from frontend.pages import citizen
-    citizen.render()
+# ── Login page ────────────────────────────────────────────────────────────────
+elif root_page == "login":
+    st.markdown(
+        """<style>[data-testid="stSidebar"]{display:none;}</style>""",
+        unsafe_allow_html=True,
+    )
+    from frontend.pages import login
+    login.render()
 
-elif selected_role == "cleaner":
-    from frontend.pages import cleaner
-    cleaner.render()
+# ── Main application (authenticated) ─────────────────────────────────────────
+elif root_page == "app":
+    if not st.session_state.get("logged_in"):
+        # Not authenticated → send to login
+        st.session_state["current_page_root"] = "login"
+        st.rerun()
 
-elif selected_role == "municipal_staff":
-    from frontend.pages import municipal_staff
-    municipal_staff.render()
+    role = st.session_state.get("role", "citizen")
+    user = st.session_state.get("user", {})
 
-elif selected_role == "admin":
-    from frontend.pages import admin
-    admin.render()
+    # Render role-aware sidebar
+    from frontend.components.layout import render_sidebar
+    render_sidebar(role, user)
 
-# ---------------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------------
-st.sidebar.divider()
-st.sidebar.caption("SwachhLoop AI v0.1.0 — Phase 1 Foundation")
+    # Route to the appropriate role module
+    if role == "citizen":
+        from frontend.pages import citizen
+        citizen.render()
+
+    elif role == "cleaner":
+        from frontend.pages import cleaner
+        cleaner.render()
+
+    elif role == "municipal_staff":
+        from frontend.pages import municipal_staff
+        municipal_staff.render()
+
+    elif role == "admin":
+        from frontend.pages import admin
+        admin.render()
+
+    else:
+        st.error(f"Unknown role: {role}. Please log out and sign in again.")
+        if st.button("🔐 Sign In Again"):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.rerun()
+
+# ── Fallback ─────────────────────────────────────────────────────────────────
+else:
+    st.session_state["current_page_root"] = "landing"
+    st.rerun()
