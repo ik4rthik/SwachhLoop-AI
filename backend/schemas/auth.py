@@ -19,21 +19,20 @@ class LoginRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    """POST /api/auth/register"""
+    """POST /api/auth/register — Public registration (Citizens only)"""
     email: EmailStr
     password: str = Field(min_length=8, description="Minimum 8 characters")
     full_name: str = Field(min_length=2, max_length=255)
-    role: str = Field(default="citizen", description="citizen | cleaner | municipal_staff | admin")
+    role: str = Field(default="citizen", description="citizen only")
     phone: str | None = Field(default=None, max_length=20)
     ward: str | None = Field(default=None, max_length=100)
 
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:
-        allowed = {"citizen", "cleaner", "municipal_staff", "admin"}
-        if v not in allowed:
-            raise ValueError(f"role must be one of: {', '.join(sorted(allowed))}")
-        return v
+        # Normalize and allow citizen; non-citizen roles will be rejected with 403 in the route
+        return v.strip().lower()
+
 
 
 # ---------------------------------------------------------------------------

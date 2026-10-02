@@ -25,6 +25,7 @@ ACTION_CREATE_USER = "CREATE_USER"
 ACTION_DEACTIVATE_USER = "DEACTIVATE_USER"
 ACTION_REACTIVATE_USER = "REACTIVATE_USER"
 ACTION_UPLOAD_EVIDENCE = "UPLOAD_EVIDENCE"
+ACTION_AI_OPERATION = "AI_OPERATION"
 
 
 async def log_event(
@@ -53,3 +54,8 @@ async def log_event(
     except Exception as exc:  # pragma: no cover
         import logging
         logging.getLogger(__name__).error(f"Audit log write failed: {exc}")
+
+
+class AuditService:
+    """Class wrapper for log_event to support object-oriented service injection."""
+    log = staticmethod(log_event)

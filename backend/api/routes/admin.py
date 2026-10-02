@@ -13,12 +13,73 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import require_admin
 from backend.db.session import get_db
-from backend.models.user import User
+from backend.models.user import User, UserRole
 from backend.repositories import audit_log_repo, user_repo
-from backend.schemas.admin import AuditLogResponse, SystemHealthItem, UserAdminResponse
-from backend.services.audit_service import ACTION_DEACTIVATE_USER, ACTION_REACTIVATE_USER, log_event
+from backend.schemas.admin import AuditLogResponse, CreateUserAdminRequest, SystemHealthItem, UserAdminResponse
+from backend.services.audit_service import (
+    ACTION_CREATE_USER, ACTION_DEACTIVATE_USER, ACTION_REACTIVATE_USER, log_event
+)
+from backend.services.auth_service import hash_password
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/users
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/users",
+    response_model=UserAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user account (admin only)",
+)
+async def create_user_by_admin(
+    body: CreateUserAdminRequest,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> UserAdminResponse:
+    """
+    Secure endpoint for administrators to create privileged user accounts
+    (Cleaners, Municipal Staff, Admins, or Citizens).
+    """
+    existing = await user_repo.get_user_by_email(db, body.email)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists.",
+        )
+
+    try:
+        role = UserRole(body.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid role: {body.role!r}",
+        )
+
+    user = await user_repo.create_user(
+        db=db,
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+        role=role,
+        phone=body.phone,
+        ward=body.ward,
+        employee_id=body.employee_id,
+        department=body.department,
+    )
+
+    await log_event(
+        db,
+        action=ACTION_CREATE_USER,
+        actor_id=current_user.id,
+        resource_type="user",
+        resource_id=str(user.id),
+        detail=f"Admin created {role.value} account: {user.email}",
+    )
+
+    return UserAdminResponse.model_validate(user)
 
 
 # ---------------------------------------------------------------------------

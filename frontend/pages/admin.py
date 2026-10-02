@@ -21,7 +21,7 @@ from frontend.components import (
 )
 from frontend.services.api_client import (
     get_all_users, get_system_health, get_audit_log,
-    get_notifications, check_backend_health,
+    get_notifications, check_backend_health, create_admin_user,
 )
 
 
@@ -236,7 +236,48 @@ def _render_users() -> None:
         )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.button("➕ Add New User (Phase 3)", disabled=True, use_container_width=False)
+    with st.expander("➕ Create New User Account (Admin)"):
+        with st.form("admin_create_user_form"):
+            c_name, c_email = st.columns(2)
+            with c_name:
+                u_name = st.text_input("Full Name", placeholder="e.g. Ramesh Kumar", key="admin_new_name")
+            with c_email:
+                u_email = st.text_input("Email", placeholder="e.g. ramesh@swachhloop.ai", key="admin_new_email")
+
+            c_pass, c_role = st.columns(2)
+            with c_pass:
+                u_pass = st.text_input("Temporary Password", type="password", placeholder="Min 8 characters", key="admin_new_pass")
+            with c_role:
+                u_role = st.selectbox("Role", ["cleaner", "municipal_staff", "citizen", "admin"], key="admin_new_role")
+
+            c_emp, c_dept = st.columns(2)
+            with c_emp:
+                u_emp = st.text_input("Employee ID (Optional)", placeholder="e.g. CLN-099", key="admin_new_emp")
+            with c_dept:
+                u_dept = st.text_input("Department / Ward", placeholder="e.g. Zone A", key="admin_new_dept")
+
+            submitted_user = st.form_submit_button("Create Account", type="primary")
+            if submitted_user:
+                if not u_name or not u_email or not u_pass:
+                    st.error("Please fill in Name, Email, and Password.")
+                elif len(u_pass) < 8:
+                    st.error("Password must be at least 8 characters.")
+                else:
+                    payload = {
+                        "full_name": u_name.strip(),
+                        "email": u_email.strip(),
+                        "password": u_pass,
+                        "role": u_role,
+                        "employee_id": u_emp.strip() if u_emp else None,
+                        "department": u_dept.strip() if u_dept else None,
+                        "ward": u_dept.strip() if u_dept else None,
+                    }
+                    res = create_admin_user(payload)
+                    if res:
+                        st.success(f"Successfully created {u_role} account for {u_email}!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to create account. Check if email already exists or if backend is offline.")
 
 
 # ---------------------------------------------------------------------------

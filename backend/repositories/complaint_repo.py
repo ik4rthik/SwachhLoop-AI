@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.models.complaint import Complaint, ComplaintPriority, ComplaintStatus
+from backend.models.task import CleaningTask
 
 
 async def create_complaint(
@@ -22,6 +23,7 @@ async def create_complaint(
     waste_type: str | None = None,
     priority: ComplaintPriority = ComplaintPriority.MEDIUM,
     image_url: str | None = None,
+    waste_confidence: float | None = None,
 ) -> Complaint:
     complaint = Complaint(
         citizen_id=citizen_id,
@@ -34,7 +36,7 @@ async def create_complaint(
         priority=priority,
         image_url=image_url,
         status=ComplaintStatus.SUBMITTED,
-        waste_confidence=None,
+        waste_confidence=waste_confidence,
     )
     db.add(complaint)
     await db.flush()
@@ -47,7 +49,10 @@ async def get_complaint_by_id(
 ) -> Complaint | None:
     stmt = select(Complaint).where(Complaint.id == complaint_id)
     if load_citizen:
-        stmt = stmt.options(selectinload(Complaint.citizen))
+        stmt = stmt.options(
+            selectinload(Complaint.citizen),
+            selectinload(Complaint.task).selectinload(CleaningTask.assigned_cleaner),
+        )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -62,7 +67,10 @@ async def get_complaints(
 ) -> list[Complaint]:
     stmt = (
         select(Complaint)
-        .options(selectinload(Complaint.citizen))
+        .options(
+            selectinload(Complaint.citizen),
+            selectinload(Complaint.task).selectinload(CleaningTask.assigned_cleaner),
+        )
         .order_by(Complaint.reported_at.desc())
         .limit(limit)
         .offset(offset)
@@ -75,6 +83,45 @@ async def get_complaints(
         stmt = stmt.where(Complaint.priority == priority.upper())
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_complaints_for_cleaner(
+    db: AsyncSession,
+    cleaner_id: int,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Complaint]:
+    """Retrieve only complaints assigned to the specific cleaner."""
+    stmt = (
+        select(Complaint)
+        .join(CleaningTask, CleaningTask.complaint_id == Complaint.id)
+        .where(CleaningTask.assigned_to == cleaner_id)
+        .options(
+            selectinload(Complaint.citizen),
+            selectinload(Complaint.task).selectinload(CleaningTask.assigned_cleaner),
+        )
+        .order_by(Complaint.reported_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if status is not None:
+        stmt = stmt.where(Complaint.status == status.upper())
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def is_complaint_assigned_to_cleaner(
+    db: AsyncSession, complaint_id: int, cleaner_id: int
+) -> bool:
+    """Check if a cleaner has a task assigned for this complaint."""
+    stmt = select(CleaningTask.id).where(
+        CleaningTask.complaint_id == complaint_id,
+        CleaningTask.assigned_to == cleaner_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none() is not None
+
 
 
 async def update_complaint_status(

@@ -17,7 +17,8 @@ from backend.api.dependencies import get_current_user, require_staff_or_admin
 from backend.db.session import get_db
 from backend.models.task import TaskStatus
 from backend.models.user import User, UserRole
-from backend.repositories import task_repo
+from backend.repositories import task_repo, user_repo
+from backend.schemas.auth import UserResponse
 from backend.schemas.task import TaskResponse, TaskStatusUpdate
 from backend.services.audit_service import ACTION_UPDATE_TASK_STATUS, ACTION_UPLOAD_EVIDENCE, log_event
 from backend.services.storage_service import save_upload
@@ -54,6 +55,24 @@ def _task_to_response(task) -> TaskResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/tasks/cleaners  (must be before /{task_id} to avoid route conflict)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/cleaners",
+    response_model=list[UserResponse],
+    summary="List active cleaners for assignment (staff/admin only)",
+)
+async def list_cleaners(
+    current_user: User = Depends(require_staff_or_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[UserResponse]:
+    """Retrieve all active cleaner accounts for task assignment."""
+    cleaners = await user_repo.get_users_by_role(db, UserRole.CLEANER)
+    return [UserResponse.model_validate(c) for c in cleaners if c.is_active]
+
+
+# ---------------------------------------------------------------------------
 # GET /api/tasks
 # ---------------------------------------------------------------------------
 
@@ -70,9 +89,16 @@ async def list_tasks(
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
     """
+    - Citizen: access forbidden (403).
     - Cleaner: sees only tasks assigned to them.
     - Staff / Admin: sees all tasks.
     """
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to cleaners, municipal staff, and administrators.",
+        )
+
     cleaner_id = None
     if current_user.role == UserRole.CLEANER:
         cleaner_id = current_user.id
@@ -97,6 +123,12 @@ async def get_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to cleaners, municipal staff, and administrators.",
+        )
+
     task = await task_repo.get_task_by_id(db, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
@@ -127,7 +159,14 @@ async def update_task(
     """
     Cleaners can update their own tasks.
     Staff/Admin can update any task.
+    Citizens cannot access tasks.
     """
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to cleaners, municipal staff, and administrators.",
+        )
+
     task = await task_repo.get_task_by_id(db, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
@@ -146,10 +185,13 @@ async def update_task(
 
     task = await task_repo.update_task_status(db, task_id, new_status, actor_id=current_user.id)
 
-    # Update the linked complaint status when task is completed
-    if new_status == TaskStatus.COMPLETED:
-        from backend.repositories.complaint_repo import update_complaint_status
-        from backend.models.complaint import ComplaintStatus
+    # Sync linked complaint status with task lifecycle
+    from backend.repositories.complaint_repo import update_complaint_status
+    from backend.models.complaint import ComplaintStatus
+
+    if new_status == TaskStatus.IN_PROGRESS:
+        await update_complaint_status(db, task.complaint_id, ComplaintStatus.CLEANING)
+    elif new_status == TaskStatus.COMPLETED:
         await update_complaint_status(db, task.complaint_id, ComplaintStatus.VERIFICATION)
 
     await log_event(
@@ -183,6 +225,12 @@ async def upload_evidence(
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     """Cleaner uploads the after-cleanup photo for a completed task."""
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to cleaners, municipal staff, and administrators.",
+        )
+
     task = await task_repo.get_task_by_id(db, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
@@ -212,3 +260,4 @@ async def upload_evidence(
 
     task = await task_repo.get_task_by_id(db, task_id)
     return _task_to_response(task)
+

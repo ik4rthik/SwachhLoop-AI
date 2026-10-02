@@ -103,7 +103,7 @@ async def client(setup_database) -> AsyncClient:
 @pytest_asyncio.fixture
 async def citizen_user(db_session: AsyncSession) -> User:
     from backend.repositories.user_repo import create_user
-    return await create_user(
+    user = await create_user(
         db=db_session,
         email="test_citizen@example.com",
         hashed_password=hash_password("testpass123"),
@@ -111,12 +111,14 @@ async def citizen_user(db_session: AsyncSession) -> User:
         role=UserRole.CITIZEN,
         ward="Test Ward",
     )
+    await db_session.commit()
+    return user
 
 
 @pytest_asyncio.fixture
 async def cleaner_user(db_session: AsyncSession) -> User:
     from backend.repositories.user_repo import create_user
-    return await create_user(
+    user = await create_user(
         db=db_session,
         email="test_cleaner@example.com",
         hashed_password=hash_password("testpass123"),
@@ -124,30 +126,37 @@ async def cleaner_user(db_session: AsyncSession) -> User:
         role=UserRole.CLEANER,
         employee_id="CLN-TEST",
     )
+    await db_session.commit()
+    return user
 
 
 @pytest_asyncio.fixture
 async def staff_user(db_session: AsyncSession) -> User:
     from backend.repositories.user_repo import create_user
-    return await create_user(
+    user = await create_user(
         db=db_session,
         email="test_staff@example.com",
         hashed_password=hash_password("testpass123"),
         full_name="Test Staff",
         role=UserRole.MUNICIPAL_STAFF,
     )
+    await db_session.commit()
+    return user
 
 
 @pytest_asyncio.fixture
 async def admin_user(db_session: AsyncSession) -> User:
     from backend.repositories.user_repo import create_user
-    return await create_user(
+    user = await create_user(
         db=db_session,
         email="test_admin@example.com",
         hashed_password=hash_password("testpass123"),
         full_name="Test Admin",
         role=UserRole.ADMIN,
     )
+    await db_session.commit()
+    return user
+
 
 
 # ---------------------------------------------------------------------------

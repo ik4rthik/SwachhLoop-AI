@@ -59,28 +59,33 @@ class TestTaskAccess:
             assert t["assigned_to"] == cleaner_user.id
 
     async def test_cleaner_cannot_see_other_cleaner_tasks(
-        self, client: AsyncClient, citizen_token, staff_token, cleaner_user
+        self, client: AsyncClient, db_session, citizen_token, staff_token, cleaner_token, cleaner_user
     ):
         """Cleaner A cannot see tasks assigned to Cleaner B."""
-        # Register Cleaner B
-        reg = await client.post("/api/auth/register", json={
-            "email": "cleaner_b@test.com",
-            "password": "testpass123",
-            "full_name": "Cleaner B",
-            "role": "cleaner",
-        })
-        assert reg.status_code == 201
-        cleaner_b_id = reg.json()["id"]
+        from backend.repositories.user_repo import create_user
+        from backend.services.auth_service import hash_password
+        from backend.models.user import UserRole
+
+        # Create Cleaner B directly in DB
+        cleaner_b = await create_user(
+            db=db_session,
+            email="cleaner_b_iso@test.com",
+            hashed_password=hash_password("testpass123"),
+            full_name="Cleaner B",
+            role=UserRole.CLEANER,
+            employee_id="CLN-B",
+        )
 
         login = await client.post("/api/auth/login", json={
-            "email": "cleaner_b@test.com",
+            "email": "cleaner_b_iso@test.com",
             "password": "testpass123",
         })
+        assert login.status_code == 200
         cleaner_b_token = login.json()["access_token"]
 
         # Assign a complaint to Cleaner B
         complaint_id = await _create_and_assign_complaint(
-            client, citizen_token, staff_token, cleaner_b_id, "Task for Cleaner B"
+            client, citizen_token, staff_token, cleaner_b.id, "Task for Cleaner B"
         )
 
         # Get Cleaner B's task ID
@@ -88,27 +93,23 @@ class TestTaskAccess:
             "/api/tasks",
             headers={"Authorization": f"Bearer {cleaner_b_token}"},
         )
+        assert tasks_resp.status_code == 200
         task_id = tasks_resp.json()[0]["id"]
 
-        # Cleaner A tries to access Cleaner B's task → 403
-        # First get a cleaner_a token
-        reg_a = await client.post("/api/auth/register", json={
-            "email": "cleaner_a_isolation@test.com",
-            "password": "testpass123",
-            "full_name": "Cleaner A",
-            "role": "cleaner",
-        })
-        login_a = await client.post("/api/auth/login", json={
-            "email": "cleaner_a_isolation@test.com",
-            "password": "testpass123",
-        })
-        cleaner_a_token = login_a.json()["access_token"]
-
+        # Cleaner A tries to view Cleaner B's task → 403
         resp = await client.get(
             f"/api/tasks/{task_id}",
-            headers={"Authorization": f"Bearer {cleaner_a_token}"},
+            headers={"Authorization": f"Bearer {cleaner_token}"},
         )
         assert resp.status_code == 403
+
+        # Cleaner A tries to update Cleaner B's task → 403
+        patch_resp = await client.patch(
+            f"/api/tasks/{task_id}",
+            json={"status": "IN_PROGRESS"},
+            headers={"Authorization": f"Bearer {cleaner_token}"},
+        )
+        assert patch_resp.status_code == 403
 
     async def test_staff_sees_all_tasks(
         self, client: AsyncClient, citizen_token, staff_token, cleaner_user
@@ -124,11 +125,11 @@ class TestTaskAccess:
         assert resp.status_code == 200
         assert len(resp.json()) >= 1
 
-    async def test_cleaner_can_update_task_status(
+    async def test_cleaner_can_update_task_status_and_sync_complaint(
         self, client: AsyncClient, citizen_token, staff_token, cleaner_token, cleaner_user
     ):
-        """Cleaner can update the status of their own task."""
-        await _create_and_assign_complaint(
+        """Cleaner can update task status, which syncs the complaint status (CLEANING, VERIFICATION)."""
+        complaint_id = await _create_and_assign_complaint(
             client, citizen_token, staff_token, cleaner_user.id
         )
 
@@ -136,6 +137,7 @@ class TestTaskAccess:
         tasks = await client.get("/api/tasks", headers={"Authorization": f"Bearer {cleaner_token}"})
         task_id = tasks.json()[0]["id"]
 
+        # 1. Update to IN_PROGRESS -> complaint should become CLEANING
         resp = await client.patch(
             f"/api/tasks/{task_id}",
             json={"status": "IN_PROGRESS"},
@@ -144,17 +146,72 @@ class TestTaskAccess:
         assert resp.status_code == 200
         assert resp.json()["status"] == "IN_PROGRESS"
 
+        c_resp = await client.get(f"/api/complaints/{complaint_id}", headers={"Authorization": f"Bearer {staff_token}"})
+        assert c_resp.json()["status"] == "CLEANING"
+
+        # 2. Update to COMPLETED -> complaint should become VERIFICATION
+        resp2 = await client.patch(
+            f"/api/tasks/{task_id}",
+            json={"status": "COMPLETED"},
+            headers={"Authorization": f"Bearer {cleaner_token}"},
+        )
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "COMPLETED"
+
+        c_resp2 = await client.get(f"/api/complaints/{complaint_id}", headers={"Authorization": f"Bearer {staff_token}"})
+        assert c_resp2.json()["status"] == "VERIFICATION"
+
     async def test_citizen_cannot_access_tasks(
         self, client: AsyncClient, citizen_token, staff_token, cleaner_user
     ):
-        """Citizens cannot view any tasks — role-gated via list filtering."""
-        # Citizens get an empty list (tasks filtered by cleaner_id=citizen.id which won't match)
+        """Citizens cannot view or modify any cleaning tasks (403 Forbidden)."""
+        # 1. List tasks
         resp = await client.get(
             "/api/tasks",
             headers={"Authorization": f"Bearer {citizen_token}"},
         )
-        # Should succeed but return empty (citizen's cleaner_id = their own id = no tasks)
-        assert resp.status_code == 200
+        assert resp.status_code == 403
+
+        # Create a task to test single task endpoints
+        complaint_id = await _create_and_assign_complaint(
+            client, citizen_token, staff_token, cleaner_user.id
+        )
+        tasks = await client.get("/api/tasks", headers={"Authorization": f"Bearer {staff_token}"})
+        task_id = tasks.json()[0]["id"]
+
+        # 2. Get task by ID
+        get_resp = await client.get(
+            f"/api/tasks/{task_id}",
+            headers={"Authorization": f"Bearer {citizen_token}"},
+        )
+        assert get_resp.status_code == 403
+
+        # 3. Patch task
+        patch_resp = await client.patch(
+            f"/api/tasks/{task_id}",
+            json={"status": "IN_PROGRESS"},
+            headers={"Authorization": f"Bearer {citizen_token}"},
+        )
+        assert patch_resp.status_code == 403
+
+    async def test_list_cleaners_endpoint(
+        self, client: AsyncClient, staff_token, citizen_token, cleaner_user
+    ):
+        """Staff can list active cleaners; citizens are forbidden."""
+        staff_resp = await client.get(
+            "/api/tasks/cleaners",
+            headers={"Authorization": f"Bearer {staff_token}"},
+        )
+        assert staff_resp.status_code == 200
+        cleaner_emails = [c["email"] for c in staff_resp.json()]
+        assert cleaner_user.email in cleaner_emails
+
+        citizen_resp = await client.get(
+            "/api/tasks/cleaners",
+            headers={"Authorization": f"Bearer {citizen_token}"},
+        )
+        assert citizen_resp.status_code == 403
+
 
 
 class TestTaskCreation:

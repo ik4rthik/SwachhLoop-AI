@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     # --- Logging ---
     log_level: str = Field(default="INFO")
 
+    # --- AI & Multi-Agent Configuration (Phase 4) ---
+    ai_provider: str = Field(default="mock")       # mock | openai | gemini
+    ai_model_name: str = Field(default="mock-model")
+    openai_api_key: str | None = Field(default=None)
+    gemini_api_key: str | None = Field(default=None)
+    rag_knowledge_path: str = Field(default="data/knowledge_base.json")
+    default_depot_lat: float = Field(default=10.1667)   # Kalady Town Center
+    default_depot_lon: float = Field(default=76.4333)
+    cleanup_verification_threshold: float = Field(default=0.60)
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton — import this everywhere instead of re-instantiating
