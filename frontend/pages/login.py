@@ -3,8 +3,8 @@ SwachhLoop AI — Login Page
 ============================
 Shared login page for all roles.
 
-Phase 2: Demo/prototype authentication using DEMO_USERS list.
-Phase 3: Replace authenticate_user() with real JWT authentication.
+Phase 3: Real JWT authentication via FastAPI backend.
+         Falls back to demo mode if backend is unreachable.
 """
 
 import streamlit as st
@@ -57,7 +57,7 @@ def render() -> None:
             options=list(demo_labels.values()),
             index=default_demo_idx,
             key="demo_user_select",
-            help="Phase 2 demo mode. Select a role to auto-fill credentials.",
+            help="Select a demo role to auto-fill credentials.",
         )
 
         # Reverse map label → role key
@@ -113,7 +113,7 @@ def render() -> None:
                     st.success(f"Welcome back, {user['name']}! Redirecting…")
                     st.rerun()
                 else:
-                    st.error("Invalid email or password. Try a demo account above.")
+                    st.error("Invalid email or password. If using demo accounts, ensure the backend is running (`uvicorn backend.main:app`), or select a demo account from the quick-fill dropdown.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -123,7 +123,7 @@ def render() -> None:
             <div style="text-align:center;margin-top:1.25rem;font-size:0.83rem;color:#5a5a7a;">
                 New to SwachhLoop AI?
                 <span style="color:#6B2737;font-weight:600;cursor:pointer;">
-                    Register (Phase 3)
+                    Register (use backend API: POST /api/auth/register)
                 </span>
             </div>
             """,
@@ -134,10 +134,11 @@ def render() -> None:
         st.markdown(
             """
             <div class="glass-card" style="margin-top:1.5rem;padding:0.85rem 1rem;background:rgba(107,39,55,0.04);">
-                <div style="font-size:0.75rem;font-weight:600;color:#6B2737;margin-bottom:0.3rem;">🔐 Phase 2 Demo Mode</div>
+                <div style="font-size:0.75rem;font-weight:600;color:#6B2737;margin-bottom:0.3rem;">🔐 Phase 3 — Real Authentication</div>
                 <div class="text-muted">
-                    All accounts use password: <code style="background:rgba(107,39,55,0.08);padding:0.1em 0.4em;border-radius:4px;">demo123</code><br>
-                    Real authentication will be implemented in Phase 3.
+                    Demo accounts use password: <code style="background:rgba(107,39,55,0.08);padding:0.1em 0.4em;border-radius:4px;">demo123</code><br>
+                    Start backend: <code style="background:rgba(107,39,55,0.08);padding:0.1em 0.4em;border-radius:4px;">uvicorn backend.main:app --reload</code><br>
+                    Offline? App falls back to demo data automatically.
                 </div>
             </div>
             """,

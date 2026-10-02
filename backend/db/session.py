@@ -3,19 +3,18 @@ SwachhLoop AI — Database Session
 ==================================
 Sets up the async SQLAlchemy engine and session factory.
 
-Phase 1: The engine is configured and the session factory is ready.
-         No models or migrations are created yet — those come in Phase 2.
+Supports:
+  - SQLite (aiosqlite)  for local development
+  - PostgreSQL (asyncpg) for staging/production
 
-Phase 2+: Run Alembic migrations to create tables, then use
-          get_db() as a FastAPI dependency to inject sessions.
-
-Requirements:
-  - DATABASE_URL must be set in .env (see .env.example)
-  - PostgreSQL must be running for actual DB operations
+The driver is chosen automatically from DATABASE_URL:
+  sqlite+aiosqlite:///./swachhloop.db     → local dev
+  postgresql+asyncpg://user:pass@host/db  → production
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import event
 
 from backend.core.config import settings
 
@@ -23,11 +22,18 @@ from backend.core.config import settings
 # ---------------------------------------------------------------------------
 # Async engine
 # ---------------------------------------------------------------------------
+# SQLite-specific connect_args (disable same-thread check for async use)
+connect_args = {}
+if settings.database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,       # Log SQL statements in debug mode
     pool_pre_ping=True,        # Verify connections before use
+    connect_args=connect_args,
 )
+
 
 # ---------------------------------------------------------------------------
 # Session factory
@@ -40,8 +46,9 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
+
 # ---------------------------------------------------------------------------
-# Declarative base — all ORM models will inherit from this (Phase 2+)
+# Declarative base — all ORM models will inherit from this
 # ---------------------------------------------------------------------------
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models."""

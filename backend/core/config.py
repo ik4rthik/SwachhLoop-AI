@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # --- Application ---
     app_name: str = Field(default="SwachhLoop AI")
-    app_version: str = Field(default="0.1.0")
+    app_version: str = Field(default="0.3.0")
     app_env: str = Field(default="development")  # development | staging | production
     debug: bool = Field(default=True)
 
@@ -42,13 +42,23 @@ class Settings(BaseSettings):
     api_base_url: str = Field(default="http://localhost:8000")
 
     # --- Database ---
+    # For local development use SQLite:   sqlite+aiosqlite:///./swachhloop.db
+    # For production use PostgreSQL:      postgresql+asyncpg://user:pass@host:5432/db
     database_url: str = Field(
-        default="postgresql+asyncpg://swachhloop_user:changeme@localhost:5432/swachhloop_db"
+        default="sqlite+aiosqlite:///./swachhloop.db"
     )
 
-    # --- Security (Phase 2+) ---
-    secret_key: str = Field(default="CHANGE_ME_generate_a_secure_random_key")
+    # --- Security (Phase 3) ---
+    # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+    secret_key: str = Field(default="CHANGE_ME_generate_a_secure_random_key_32_chars")
+    algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=60)
+
+    # --- Storage (Phase 3+) ---
+    # local: store uploads on disk under uploads/
+    # s3:    store on AWS S3 (Phase 4+)
+    storage_backend: str = Field(default="local")
+    upload_dir: str = Field(default="uploads")
 
     # --- Logging ---
     log_level: str = Field(default="INFO")

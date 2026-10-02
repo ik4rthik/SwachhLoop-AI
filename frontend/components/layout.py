@@ -71,25 +71,21 @@ def render_sidebar(role: str, user: dict) -> str:
 
     # Brand + role chip
     st.sidebar.markdown(
-        f"""
-        <div class="sidebar-logo">♻️ SwachhLoop AI</div>
-        <div class="sidebar-role-chip">{role_label}</div>
-        """,
+        f'<div class="sidebar-logo">♻️ SwachhLoop AI</div><div class="sidebar-role-chip">{role_label}</div>',
         unsafe_allow_html=True,
     )
 
     # User greeting
+    avatar = user.get('avatar_initials', '?')
+    name = user.get('name', 'User')
+    subtitle = user.get('ward', user.get('department', ''))
     st.sidebar.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0;margin-bottom:0.5rem;">
-            <div class="avatar">{user.get('avatar_initials','?')}</div>
-            <div>
-                <div style="font-weight:600;font-size:0.88rem;color:var(--text-primary);line-height:1.2;">{user.get('name','User')}</div>
-                <div style="font-size:0.72rem;color:var(--text-secondary);">{user.get('ward', user.get('department', ''))}</div>
-            </div>
-        </div>
-        <div class="nav-separator"></div>
-        """,
+        f'<div style="display:flex;align-items:center;gap:0.6rem;padding:0.6rem 0;margin-bottom:0.5rem;">'
+        f'<div class="avatar">{avatar}</div>'
+        f'<div>'
+        f'<div style="font-weight:600;font-size:0.88rem;color:var(--text-primary);line-height:1.2;">{name}</div>'
+        f'<div style="font-size:0.72rem;color:var(--text-secondary);">{subtitle}</div>'
+        f'</div></div><div class="nav-separator"></div>',
         unsafe_allow_html=True,
     )
 
@@ -144,27 +140,28 @@ def render_topbar(user: dict, role: str, page_title: str = "") -> None:
         else ""
     )
 
-    st.markdown(
-        f"""
-        <div class="topbar">
-            <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="topbar-brand">♻️ SwachhLoop AI</span>
-                {f'<span style="color:var(--text-muted);font-size:0.85rem;">/ {page_title}</span>' if page_title else ''}
-            </div>
-            <div style="display:flex;align-items:center;gap:1.25rem;">
-                <span class="topbar-user">
-                    <span style="color:var(--text-muted);font-size:0.78rem;">🔔 Notifications</span>
-                    {notif_badge}
-                </span>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <div class="avatar" style="width:30px;height:30px;font-size:0.7rem;">{user.get('avatar_initials','?')}</div>
-                    <span class="topbar-user">{user.get('name','')}</span>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    title_html = f'<span style="color:var(--text-muted);font-size:0.85rem;">/ {page_title}</span>' if page_title else ""
+    user_name = user.get("name", "")
+    avatar = user.get("avatar_initials", "?")
+
+    html = (
+        f'<div class="topbar">'
+        f'<div style="display:flex;align-items:center;gap:0.75rem;">'
+        f'<span class="topbar-brand">♻️ SwachhLoop AI</span>{title_html}'
+        f'</div>'
+        f'<div style="display:flex;align-items:center;gap:1.25rem;">'
+        f'<div class="topbar-user">'
+        f'<span style="color:var(--text-muted);font-size:0.78rem;">🔔 Notifications</span>{notif_badge}'
+        f'</div>'
+        f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+        f'<div class="avatar" style="width:30px;height:30px;font-size:0.7rem;">{avatar}</div>'
+        f'<span class="topbar-user">{user_name}</span>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
     )
+
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def _count_unread(role: str) -> int:

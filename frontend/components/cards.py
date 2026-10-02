@@ -4,6 +4,7 @@ SwachhLoop AI — Shared UI Components: Cards
 GlassCard, StatCard, ComplaintCard, TaskCard
 """
 
+import textwrap
 import streamlit as st
 
 
@@ -41,14 +42,14 @@ def stat_card(
         delta_html = f'<div class="text-muted" style="margin-top:0.25rem;font-size:0.78rem;">{delta}</div>'
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="stat-card {variant}">
             <div class="stat-icon">{icon}</div>
             <div class="stat-value">{value}</div>
             <div class="stat-label">{label}</div>
             {delta_html}
         </div>
-        """,
+        """).strip(),
         unsafe_allow_html=True,
     )
 
@@ -70,7 +71,7 @@ def complaint_card(complaint: dict, show_action: bool = True, action_label: str 
     cleaner_html = f"<span>👷 {cleaner}</span>" if cleaner else "<span>Unassigned</span>"
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="complaint-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;">
                 <div>
@@ -88,7 +89,7 @@ def complaint_card(complaint: dict, show_action: bool = True, action_label: str 
                 </div>
             </div>
         </div>
-        """,
+        """).strip(),
         unsafe_allow_html=True,
     )
 
@@ -120,7 +121,7 @@ def task_card(task: dict) -> bool:
     }.get(task.get("priority", "LOW"), "#9090a8")
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="complaint-card" style="border-left: 4px solid {priority_border_color};">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;">
                 <div>
@@ -139,7 +140,7 @@ def task_card(task: dict) -> bool:
                 </div>
             </div>
         </div>
-        """,
+        """).strip(),
         unsafe_allow_html=True,
     )
 
@@ -168,7 +169,7 @@ def ai_assessment_card(
     }.get(priority.upper(), "#9090a8")
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="ai-badge" style="margin-bottom:1rem;">
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
                 <span style="font-size:1.1rem;">🤖</span>
@@ -194,6 +195,6 @@ def ai_assessment_card(
                 <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.2rem;">{reason}</div>
             </div>
         </div>
-        """,
+        """).strip(),
         unsafe_allow_html=True,
     )
