@@ -154,22 +154,59 @@ class TestComplaintOwnership:
         )
         assert resp.status_code == 403
 
-    async def test_staff_can_view_any_complaint(
-        self, client: AsyncClient, citizen_token, staff_token
+    async def test_cleaner_cannot_view_unassigned_complaint(
+        self, client: AsyncClient, citizen_token, cleaner_token
     ):
-        """Staff can view complaints submitted by any citizen."""
+        """Cleaner cannot view a complaint that is not assigned to them."""
         create = await client.post(
             "/api/complaints",
-            data={"title": "For Staff Access", "priority": "MEDIUM"},
+            data={"title": "Unassigned to Cleaner", "priority": "LOW"},
             headers={"Authorization": f"Bearer {citizen_token}"},
         )
         complaint_id = create.json()["id"]
 
         resp = await client.get(
             f"/api/complaints/{complaint_id}",
+            headers={"Authorization": f"Bearer {cleaner_token}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_cleaner_can_view_assigned_complaint(
+        self, client: AsyncClient, citizen_token, staff_token, cleaner_token, cleaner_user
+    ):
+        """Cleaner CAN view a complaint that has been assigned to them."""
+        create = await client.post(
+            "/api/complaints",
+            data={"title": "Assigned to Cleaner", "priority": "HIGH"},
+            headers={"Authorization": f"Bearer {citizen_token}"},
+        )
+        complaint_id = create.json()["id"]
+
+        # Staff assigns to cleaner
+        assign = await client.patch(
+            f"/api/complaints/{complaint_id}/assign?cleaner_id={cleaner_user.id}",
             headers={"Authorization": f"Bearer {staff_token}"},
         )
+        assert assign.status_code == 200
+
+        # Cleaner accesses the assigned complaint
+        resp = await client.get(
+            f"/api/complaints/{complaint_id}",
+            headers={"Authorization": f"Bearer {cleaner_token}"},
+        )
         assert resp.status_code == 200
+        assert resp.json()["id"] == complaint_id
+        assert resp.json()["assigned_cleaner"] == cleaner_user.full_name
+
+    async def test_get_nonexistent_complaint_returns_404(
+        self, client: AsyncClient, staff_token
+    ):
+        """Requesting a non-existent complaint ID returns 404."""
+        resp = await client.get(
+            "/api/complaints/999999",
+            headers={"Authorization": f"Bearer {staff_token}"},
+        )
+        assert resp.status_code == 404
 
 
 class TestComplaintStatusUpdate:

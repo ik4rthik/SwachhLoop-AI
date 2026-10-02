@@ -21,7 +21,7 @@ from backend.models.complaint import ComplaintPriority, ComplaintStatus
 from backend.models.task import TaskStatus
 from backend.models.user import User, UserRole
 from backend.repositories import complaint_repo, task_repo, notification_repo
-from backend.schemas.complaint import ComplaintResponse, MapMarker
+from backend.schemas.complaint import ComplaintAssign, ComplaintResponse, ComplaintStatusUpdate, MapMarker
 from backend.services.audit_service import (
     ACTION_ASSIGN_TASK, ACTION_SUBMIT_COMPLAINT, ACTION_UPDATE_COMPLAINT_STATUS, log_event
 )
@@ -33,7 +33,37 @@ router = APIRouter()
 
 
 def _complaint_to_response(c) -> ComplaintResponse:
-    return ComplaintResponse.model_validate(c)
+    assigned_cleaner = None
+    task_id = None
+    if hasattr(c, "task") and c.task:
+        task_id = c.task.id
+        if hasattr(c.task, "assigned_cleaner") and c.task.assigned_cleaner:
+            assigned_cleaner = c.task.assigned_cleaner.full_name
+
+    citizen_summary = None
+    if hasattr(c, "citizen") and c.citizen:
+        from backend.schemas.complaint import CitizenSummary
+        citizen_summary = CitizenSummary.model_validate(c.citizen)
+
+    return ComplaintResponse(
+        id=c.id,
+        citizen_id=c.citizen_id,
+        citizen=citizen_summary,
+        title=c.title,
+        description=c.description,
+        image_url=c.image_url,
+        latitude=c.latitude,
+        longitude=c.longitude,
+        location_label=c.location_label,
+        reported_at=c.reported_at,
+        updated_at=c.updated_at,
+        status=c.status.value if hasattr(c.status, "value") else str(c.status),
+        priority=c.priority.value if hasattr(c.priority, "value") else str(c.priority),
+        waste_type=c.waste_type,
+        waste_confidence=c.waste_confidence,
+        assigned_cleaner=assigned_cleaner,
+        task_id=task_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +103,12 @@ async def submit_complaint(
             detail=f"Invalid priority: {priority!r}. Use LOW, MEDIUM, HIGH, or CRITICAL.",
         )
 
-    # Handle image upload
+    # Handle image upload & AI waste detection
     image_url: str | None = None
+    file_bytes: bytes | None = None
+    ai_waste_type = waste_type
+    ai_confidence = None
+
     if image is not None and image.filename:
         file_bytes = await image.read()
         if len(file_bytes) > 10 * 1024 * 1024:  # 10 MB limit
@@ -84,6 +118,23 @@ async def submit_complaint(
             )
         image_url = await save_upload(file_bytes, image.filename, image.content_type or "image/jpeg")
 
+    # Run AI analysis and waste detection (Phase 4)
+    try:
+        if file_bytes and len(file_bytes) > 10:
+            from backend.services.waste_detector import get_waste_detector
+            det = await get_waste_detector().detect(file_bytes)
+            if det.detected:
+                ai_waste_type = ai_waste_type or (det.waste_types[0] if det.waste_types else None)
+                ai_confidence = det.confidence
+        elif description:
+            from backend.services.complaint_analyzer import get_complaint_analyzer
+            ana = await get_complaint_analyzer().analyze(description)
+            if ana.waste_types:
+                ai_waste_type = ai_waste_type or ana.waste_types[0]
+                ai_confidence = 0.75
+    except Exception as err:
+        logger.warning("AI enrichment on complaint submission encountered non-fatal error: %s", err)
+
     complaint = await complaint_repo.create_complaint(
         db=db,
         citizen_id=current_user.id,
@@ -92,9 +143,10 @@ async def submit_complaint(
         latitude=latitude,
         longitude=longitude,
         location_label=location_label,
-        waste_type=waste_type,
+        waste_type=ai_waste_type,
         priority=priority_enum,
         image_url=image_url,
+        waste_confidence=ai_confidence,
     )
 
     await log_event(
@@ -161,22 +213,37 @@ async def list_complaints(
     db: AsyncSession = Depends(get_db),
 ) -> list[ComplaintResponse]:
     """
+    Role-based filtering:
     - Citizen: sees only their own complaints.
+    - Cleaner: sees only complaints assigned to them.
     - Staff / Admin: sees all complaints.
-    - Cleaner: sees complaints linked to their tasks (via tasks endpoint).
     """
-    citizen_id = None
     if current_user.role == UserRole.CITIZEN:
-        citizen_id = current_user.id
-
-    complaints = await complaint_repo.get_complaints(
-        db,
-        citizen_id=citizen_id,
-        status=status,
-        priority=priority,
-        limit=limit,
-        offset=offset,
-    )
+        complaints = await complaint_repo.get_complaints(
+            db,
+            citizen_id=current_user.id,
+            status=status,
+            priority=priority,
+            limit=limit,
+            offset=offset,
+        )
+    elif current_user.role == UserRole.CLEANER:
+        complaints = await complaint_repo.get_complaints_for_cleaner(
+            db,
+            cleaner_id=current_user.id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+    else:
+        complaints = await complaint_repo.get_complaints(
+            db,
+            citizen_id=None,
+            status=status,
+            priority=priority,
+            limit=limit,
+            offset=offset,
+        )
     return [_complaint_to_response(c) for c in complaints]
 
 
@@ -202,6 +269,12 @@ async def get_complaint(
     if current_user.role == UserRole.CITIZEN and complaint.citizen_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
+    # Cleaners can only view complaints assigned to them
+    if current_user.role == UserRole.CLEANER:
+        is_assigned = await complaint_repo.is_complaint_assigned_to_cleaner(db, complaint_id, current_user.id)
+        if not is_assigned:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
     return _complaint_to_response(complaint)
 
 
@@ -216,17 +289,30 @@ async def get_complaint(
 )
 async def update_status(
     complaint_id: int,
-    new_status: str,
     request: Request,
+    new_status: str | None = None,
+    body: ComplaintStatusUpdate | None = None,
     current_user: User = Depends(require_staff_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ComplaintResponse:
+    target_status = None
+    if body is not None and body.status:
+        target_status = body.status
+    elif new_status is not None:
+        target_status = new_status
+
+    if not target_status:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Status value is required.",
+        )
+
     try:
-        status_enum = ComplaintStatus(new_status.upper())
+        status_enum = ComplaintStatus(target_status.upper())
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid status: {new_status!r}",
+            detail=f"Invalid status: {target_status!r}",
         )
 
     complaint = await complaint_repo.update_complaint_status(db, complaint_id, status_enum)
@@ -239,7 +325,7 @@ async def update_status(
         actor_id=current_user.id,
         resource_type="complaint",
         resource_id=str(complaint_id),
-        detail=f"Status changed to {new_status.upper()}",
+        detail=f"Status changed to {target_status.upper()}",
         ip_address=request.client.host if request.client else None,
     )
 
@@ -258,18 +344,31 @@ async def update_status(
 )
 async def assign_complaint(
     complaint_id: int,
-    cleaner_id: int,
     request: Request,
+    cleaner_id: int | None = None,
+    body: ComplaintAssign | None = None,
     current_user: User = Depends(require_staff_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ComplaintResponse:
+    target_cleaner_id = None
+    if body is not None and body.cleaner_id is not None:
+        target_cleaner_id = body.cleaner_id
+    elif cleaner_id is not None:
+        target_cleaner_id = cleaner_id
+
+    if target_cleaner_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="cleaner_id is required.",
+        )
+
     complaint = await complaint_repo.get_complaint_by_id(db, complaint_id, load_citizen=False)
     if complaint is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found.")
 
     # Check cleaner exists
     from backend.repositories.user_repo import get_user_by_id
-    cleaner = await get_user_by_id(db, cleaner_id)
+    cleaner = await get_user_by_id(db, target_cleaner_id)
     if cleaner is None or cleaner.role != UserRole.CLEANER:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cleaner not found.")
 
@@ -279,11 +378,11 @@ async def assign_complaint(
         await task_repo.create_task(
             db=db,
             complaint_id=complaint_id,
-            assigned_to=cleaner_id,
+            assigned_to=target_cleaner_id,
             assigned_by=current_user.id,
         )
     else:
-        existing_task.assigned_to = cleaner_id
+        existing_task.assigned_to = target_cleaner_id
         existing_task.assigned_by = current_user.id
         existing_task.status = TaskStatus.PENDING
         await db.flush()
@@ -294,9 +393,18 @@ async def assign_complaint(
     # Notify the cleaner
     await notification_repo.create_notification(
         db=db,
-        user_id=cleaner_id,
+        user_id=target_cleaner_id,
         title="New Task Assigned",
         message=f"You have been assigned a new cleaning task for complaint #{complaint_id}.",
+        type=NotificationType.INFO,
+    )
+
+    # Notify the citizen
+    await notification_repo.create_notification(
+        db=db,
+        user_id=complaint.citizen_id,
+        title="Complaint Assigned",
+        message=f"Your complaint #{complaint_id} has been assigned to cleaner {cleaner.full_name}.",
         type=NotificationType.INFO,
     )
 
@@ -306,9 +414,10 @@ async def assign_complaint(
         actor_id=current_user.id,
         resource_type="complaint",
         resource_id=str(complaint_id),
-        detail=f"Assigned to cleaner {cleaner_id}",
+        detail=f"Assigned to cleaner {target_cleaner_id} ({cleaner.full_name})",
         ip_address=request.client.host if request.client else None,
     )
 
     complaint = await complaint_repo.get_complaint_by_id(db, complaint_id)
     return _complaint_to_response(complaint)
+

@@ -262,9 +262,9 @@ pytest --asyncio-mode=auto
 |-------|--------|-------------|
 | **Phase 1** | ✅ Complete | Project foundation, structure, config, API skeleton, service interfaces |
 | **Phase 2** | ✅ Complete | Unified frontend — design system, auth UI, role dashboards, complaint forms, mock layer |
-| **Phase 3** | ✅ Completed | Authentication, database, backend APIs, role-based authorization, and frontend integration |
-| **Phase 4** | 🚧 In progress | AI services and LangGraph multi-agent integration |
-| **Phase 5** | 🔲 Planned | Evaluation, guardrails, and production hardening |
+| **Phase 3** | ✅ Complete | Backend, Authentication, Database & API Integration (RBAC, SQLite/PostgreSQL, 56 tests) |
+| **Phase 4** | ✅ Complete | AI Services & LangGraph Multi-Agent Workflows (Kalady domain, CV, NLP, Routing, RAG, 93 tests) |
+| **Phase 5** | 🔲 Planned | Evaluation, guardrails, production hardening |
 
 ### Phase 1 Deliverables ✅
 - Project structure and clean service boundaries
@@ -287,11 +287,24 @@ pytest --asyncio-mode=auto
 - UI/UX Design System documentation ([`docs/ui-ux.md`](docs/ui-ux.md))
 
 ### Phase 3 Deliverables ✅
-- Backend authentication and role-aware authorization for Citizen, Cleaner, Municipal Staff, and Admin
-- Relational database persistence and service/repository boundaries
-- Complaint and cleaning-task APIs and backend/frontend integration
-- Image-storage and AI-service boundaries for future implementation
-- Automated backend tests (reported: 56 passed)
+- **JWT Authentication & Authorization**: Bcrypt password hashing, HS256 tokens, strict public registration restricted to citizens, admin endpoint (`POST /api/admin/users`) for privileged accounts.
+- **Role-Based Access Control (RBAC)**: Complete server-side isolation — citizens cannot view or update other citizens' complaints; cleaners can only view/update tasks and complaints assigned to them; staff and admins manage the lifecycle.
+- **Relational Database & Persistence**: Async SQLAlchemy ORM schemas (`users`, `complaints`, `cleaning_tasks`, `notifications`, `audit_logs`), SQLite default with seamless PostgreSQL compatibility, automatic startup migration/seeding.
+- **Full REST API Suite**: Complaint submission (multipart/form-data), status progression, cleaner task assignment, task evidence uploads, admin user management, system health checks, municipal statistics, and immutable audit logging.
+- **Frontend-Backend Integration**: Streamlit `frontend/services/api_client.py` fully connected to real FastAPI endpoints with JWT token forwarding, dynamic cleaner assignment in Municipal dashboard, and admin user creation UI.
+- **Automated Test Suite**: 56 unit/integration tests (`pytest`) covering authentication security, role isolation, complaint lifecycles, cleaner task syncing, admin operations, audit trails, and restart persistence.
+- **Backend Documentation**: Comprehensive API and architecture documentation in [`docs/phase3_backend.md`](docs/phase3_backend.md).
+
+### Phase 4 Deliverables ✅
+- **Modular AI Services**: Concrete implementations for `WasteDetectorService`, `ComplaintAnalyzerService`, `RouteOptimizerService`, and `CleanupVerifierService`, with deterministic local fallbacks and pluggable Gemini/OpenAI vision/LLM providers.
+- **Hierarchical LangGraph Multi-Agent Architecture**: Parent orchestrator graph routing tasks to 4 specialized subgraphs:
+  - *Complaint Processing Subgraph*: Computer vision waste detection + NLP semantics focused on Kalady, Kerala landmarks, ambiguity validation, and urgency assignment.
+  - *Collection & Logistics Subgraph*: Geospatial TSP routing with Haversine metrics and operational single-shift feasibility checks.
+  - *Cleanup Verification & Escalation Subgraph*: Visual differencing for before/after evidence with strict escalation governance for low-confidence or failed cleanups.
+  - *Public Awareness & RAG Subgraph*: Grounded civic guidance with bilingual support (English and Malayalam) referencing official Kalady Grama Panchayat waste rules (`data/knowledge_base.json`).
+- **REST API Endpoints (`/api/ai/*`)**: Fully validated and role-protected endpoints for waste detection, complaint analysis, route optimization, cleanup verification, bilingual awareness, and workflow execution.
+- **Comprehensive Test Suite**: 93 total automated tests (37 new Phase 4 tests + 56 existing Phase 3 tests) passing with 100% success rate.
+- **AI Documentation**: Full architecture diagrams, state schema, provider switching instructions, and limitations in [`docs/phase4_ai_agents.md`](docs/phase4_ai_agents.md).
 
 ---
 

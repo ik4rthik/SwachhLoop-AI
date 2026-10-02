@@ -79,6 +79,8 @@ class ComplaintResponse(BaseModel):
     priority: str
     waste_type: str | None
     waste_confidence: float | None
+    assigned_cleaner: str | None = None
+    task_id: int | None = None
 
     model_config = {"from_attributes": True}
 

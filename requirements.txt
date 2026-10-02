@@ -31,3 +31,8 @@ streamlit==1.40.1
 
 # --- Utilities ---
 python-multipart==0.0.12   # Required for FastAPI file uploads
+pillow>=11.0.0             # Image processing and verification
+
+# --- Multi-Agent AI & LangGraph (Phase 4) ---
+langgraph>=0.2.0
+langchain-core>=0.3.0

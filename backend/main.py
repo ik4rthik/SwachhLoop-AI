@@ -109,6 +109,32 @@ app.add_middleware(
 # Global error handler — never expose internal details
 # ---------------------------------------------------------------------------
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    headers = getattr(exc, "headers", None)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=headers,
+    )
+
+
+from fastapi.encoders import jsonable_encoder
+
+
+@app.exception_handler(RequestValidationError)
+async def custom_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": jsonable_encoder(exc.errors())},
+    )
+
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
@@ -116,6 +142,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         status_code=500,
         content={"detail": "An internal server error occurred. Please try again later."},
     )
+
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +163,7 @@ async def root() -> dict:
     return {
         "message": f"Welcome to {settings.app_name} API",
         "version": settings.app_version,
-        "phase": "Phase 3 — Authentication + Database + Backend Integration",
+        "phase": "Phase 4 — AI Services & LangGraph Multi-Agent Integration",
         "docs": "/docs",
         "health": "/health",
     }
@@ -149,10 +176,14 @@ async def root() -> dict:
 # Phase 1 — health (kept at root level, no prefix change)
 app.include_router(health.router)
 
-# Phase 3 — all new routes under /api prefix
+# Phase 3 — core backend routes under /api prefix
 app.include_router(auth.router,          prefix="/api/auth",          tags=["auth"])
 app.include_router(complaints.router,    prefix="/api/complaints",    tags=["complaints"])
 app.include_router(tasks.router,         prefix="/api/tasks",         tags=["tasks"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(admin.router,         prefix="/api/admin",         tags=["admin"])
 app.include_router(stats.router,         prefix="/api/stats",         tags=["stats"])
+
+# Phase 4 — AI & Multi-Agent routes
+from backend.api.routes import ai
+app.include_router(ai.router)

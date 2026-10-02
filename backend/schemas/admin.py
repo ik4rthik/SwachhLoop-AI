@@ -5,7 +5,28 @@ Pydantic response models for /api/admin/* and /api/stats/* endpoints.
 """
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+class CreateUserAdminRequest(BaseModel):
+    """POST /api/admin/users — Admin creates any user role."""
+    email: EmailStr
+    password: str = Field(min_length=8, description="Minimum 8 characters")
+    full_name: str = Field(min_length=2, max_length=255)
+    role: str = Field(description="citizen | cleaner | municipal_staff | admin")
+    phone: str | None = Field(default=None, max_length=20)
+    ward: str | None = Field(default=None, max_length=100)
+    employee_id: str | None = Field(default=None, max_length=50)
+    department: str | None = Field(default=None, max_length=100)
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        allowed = {"citizen", "cleaner", "municipal_staff", "admin"}
+        v_clean = v.strip().lower()
+        if v_clean not in allowed:
+            raise ValueError(f"role must be one of: {', '.join(sorted(allowed))}")
+        return v_clean
 
 
 class UserAdminResponse(BaseModel):

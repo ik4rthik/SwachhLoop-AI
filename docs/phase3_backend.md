@@ -125,8 +125,8 @@ All demo accounts use password: `demo123`
 ### Authentication (`/api/auth/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/register` | None | Create new account |
-| POST | `/login` | None | Get JWT token |
+| POST | `/register` | None | Create new citizen account (privileged role registration strictly blocked with 403) |
+| POST | `/login` | None | Get JWT token (verifies active account, bcrypt hash) |
 | GET | `/me` | JWT | Current user profile |
 
 **Login response:**
@@ -142,19 +142,20 @@ All demo accounts use password: `demo123`
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `` | Citizen | Submit complaint (multipart/form-data) |
-| GET | `` | All | List (citizen=own, staff/admin=all) |
+| GET | `` | All | List (citizen=own, cleaner=assigned only, staff/admin=all) |
 | GET | `/map-markers` | All | Map coordinates |
-| GET | `/{id}` | All | Single complaint (ownership enforced) |
-| PATCH | `/{id}/status?new_status=` | Staff/Admin | Update status |
-| PATCH | `/{id}/assign?cleaner_id=` | Staff/Admin | Assign to cleaner |
+| GET | `/{id}` | All | Single complaint (ownership/assignment enforced) |
+| PATCH | `/{id}/status` | Staff/Admin | Update status (query or JSON body) |
+| PATCH | `/{id}/assign` | Staff/Admin | Assign to cleaner (creates cleaning task & moves to ASSIGNED) |
 
 ### Tasks (`/api/tasks/`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `` | All | List (cleaner=own, staff/admin=all) |
-| GET | `/{id}` | All | Single task |
-| PATCH | `/{id}` | All | Update status body: `{"status": "IN_PROGRESS"}` |
-| POST | `/{id}/evidence` | All | Upload after-image |
+| GET | `` | Staff/Admin/Cleaner | List tasks (cleaner=own only, staff/admin=all, citizen=403 Forbidden) |
+| GET | `/cleaners` | Staff/Admin | List active cleaners available for assignment |
+| GET | `/{id}` | Staff/Admin/Cleaner | Single task (cleaner=own only) |
+| PATCH | `/{id}` | Staff/Admin/Cleaner | Update status (syncs complaint to CLEANING or VERIFICATION) |
+| POST | `/{id}/evidence` | Staff/Admin/Cleaner | Upload after-image proof |
 
 ### Notifications (`/api/notifications/`)
 | Method | Path | Auth | Description |
@@ -166,9 +167,10 @@ All demo accounts use password: `demo123`
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/users` | Admin | All users |
-| PATCH | `/users/{id}?is_active=` | Admin | Toggle active |
+| POST | `/users` | Admin | Create privileged user (cleaner, municipal_staff, admin, citizen) |
+| PATCH | `/users/{id}?is_active=` | Admin | Toggle active status (cannot deactivate own account) |
 | GET | `/audit-log` | Admin | Audit log |
-| GET | `/health` | Admin | System health |
+| GET | `/health` | Admin | System health and database connectivity |
 
 ### Stats (`/api/stats/`)
 | Method | Path | Auth | Description |
@@ -226,17 +228,19 @@ The `frontend/services/api_client.py` has been fully updated:
 ## Running Tests
 
 ```bash
-# Run all Phase 3 tests
+# Run all Phase 3 tests (56 tests)
 pytest tests/ -v
 
 # Run specific test files
 pytest tests/test_auth.py -v
 pytest tests/test_complaints.py -v
 pytest tests/test_tasks.py -v
+pytest tests/test_admin.py -v
 pytest tests/test_audit.py -v
+pytest tests/test_persistence.py -v
 ```
 
-Tests use an **in-memory SQLite database** — no real backend or PostgreSQL needed.
+Tests run against an isolated SQLite test database with automatic rollback/isolation — no running backend or PostgreSQL needed.
 
 ---
 

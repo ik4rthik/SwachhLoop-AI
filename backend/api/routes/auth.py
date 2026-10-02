@@ -32,7 +32,7 @@ router = APIRouter()
     "/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Register a new account",
+    summary="Register a new citizen account",
 )
 async def register(
     body: RegisterRequest,
@@ -41,11 +41,18 @@ async def register(
 ) -> UserResponse:
     """
     Create a new user account.
-
-    - Citizens can self-register.
-    - Other roles (cleaner, staff, admin) can be created here for demo/dev.
-      In production, restrict non-citizen registration to admin-only.
+    
+    Security:
+    - Public registration is strictly restricted to citizens.
+    - Privileged roles (cleaner, municipal_staff, admin) must be created
+      by an administrator via POST /api/admin/users.
     """
+    if body.role != "citizen":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public registration is restricted to citizens only. Privileged accounts (cleaner, municipal staff, admin) must be created by an administrator.",
+        )
+
     # Check email uniqueness
     existing = await user_repo.get_user_by_email(db, body.email)
     if existing is not None:
@@ -54,13 +61,7 @@ async def register(
             detail="An account with this email already exists.",
         )
 
-    try:
-        role = UserRole(body.role)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid role: {body.role!r}",
-        )
+    role = UserRole.CITIZEN
 
     user = await user_repo.create_user(
         db=db,

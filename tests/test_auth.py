@@ -45,18 +45,30 @@ class TestRegister:
         assert r2.status_code == 409
         assert "already exists" in r2.json()["detail"].lower()
 
-    async def test_register_invalid_role(self, client: AsyncClient):
-        """Registering with a non-existent role returns 422."""
+    async def test_register_privileged_roles_forbidden(self, client: AsyncClient):
+        """Public registration cannot self-assign privileged roles (admin, cleaner, staff)."""
+        for privileged_role in ["admin", "cleaner", "municipal_staff"]:
+            resp = await client.post("/api/auth/register", json={
+                "email": f"hacker_{privileged_role}@test.com",
+                "password": "securepass123",
+                "full_name": "Privilege Escalation Attempt",
+                "role": privileged_role,
+            })
+            assert resp.status_code == 403, f"Expected 403 for role {privileged_role}, got {resp.status_code}"
+            assert "restricted to citizens" in resp.json()["detail"].lower()
+
+    async def test_register_arbitrary_role_forbidden(self, client: AsyncClient):
+        """Registering with an invalid role returns 403."""
         resp = await client.post("/api/auth/register", json={
             "email": "badrole@test.com",
             "password": "securepass123",
             "full_name": "Bad Role",
-            "role": "superuser",  # invalid
+            "role": "superuser",
         })
-        assert resp.status_code == 422
+        assert resp.status_code == 403
 
     async def test_register_weak_password(self, client: AsyncClient):
-        """Password shorter than 8 characters is rejected."""
+        """Password shorter than 8 characters is rejected with 422."""
         resp = await client.post("/api/auth/register", json={
             "email": "weak@test.com",
             "password": "short",  # < 8 chars
@@ -109,6 +121,18 @@ class TestLogin:
         # Server returns the real role from DB
         assert resp.json()["user"]["role"] == "admin"
 
+    async def test_login_inactive_account(self, client: AsyncClient, db_session, citizen_user):
+        """Deactivated user account cannot log in (returns 403)."""
+        citizen_user.is_active = False
+        await db_session.flush()
+
+        resp = await client.post("/api/auth/login", json={
+            "email": citizen_user.email,
+            "password": "testpass123",
+        })
+        assert resp.status_code == 403
+        assert "deactivated" in resp.json()["detail"].lower()
+
 
 class TestMe:
     async def test_me_with_valid_token(self, client: AsyncClient, citizen_token, citizen_user):
@@ -134,6 +158,46 @@ class TestMe:
         )
         assert resp.status_code == 401
 
+    async def test_me_with_expired_token(self, client: AsyncClient, citizen_user):
+        """Expired JWT token returns 401."""
+        from datetime import timedelta
+        from backend.services.auth_service import create_access_token
+        expired_token = create_access_token(
+            {"sub": str(citizen_user.id), "role": "citizen"},
+            expires_delta=timedelta(seconds=-10),
+        )
+        resp = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {expired_token}"},
+        )
+        assert resp.status_code == 401
+
+    async def test_me_with_tampered_signature(self, client: AsyncClient, citizen_user):
+        """Token signed with wrong secret key returns 401."""
+        from jose import jwt
+        fake_token = jwt.encode(
+            {"sub": str(citizen_user.id), "role": "citizen"},
+            "wrong_secret_key_12345678901234567890",
+            algorithm="HS256",
+        )
+        resp = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {fake_token}"},
+        )
+        assert resp.status_code == 401
+
+    async def test_me_inactive_user(self, client: AsyncClient, db_session, citizen_token, citizen_user):
+        """Token for a user who was subsequently deactivated returns 403."""
+        citizen_user.is_active = False
+        await db_session.flush()
+
+        resp = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {citizen_token}"},
+        )
+        assert resp.status_code == 403
+        assert "deactivated" in resp.json()["detail"].lower()
+
     async def test_database_persistence(self, client: AsyncClient):
         """Registered user can be fetched via /me — proves DB persistence."""
         reg = await client.post("/api/auth/register", json={
@@ -154,3 +218,4 @@ class TestMe:
         me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert me.status_code == 200
         assert me.json()["user"]["full_name"] == "Persist Test"
+

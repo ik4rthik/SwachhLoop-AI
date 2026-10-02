@@ -78,6 +78,7 @@ data/processed/
 *.csv
 *.json
 !docs/*.json
+!data/*.json
 
 # --- Logs ---
 *.log

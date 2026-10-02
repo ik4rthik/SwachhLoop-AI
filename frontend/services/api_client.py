@@ -336,9 +336,58 @@ def _normalize_complaint(api_complaint: dict) -> dict:
         "image_url": api_complaint.get("image_url"),
         "ai_confidence": int((api_complaint.get("waste_confidence") or 0) * 100) or None,
         "ai_reason": "AI analysis pending (Phase 4).",
-        "assigned_cleaner": None,
+        "assigned_cleaner": api_complaint.get("assigned_cleaner"),
         "timeline": _build_timeline(api_complaint.get("status", "SUBMITTED")),
     }
+
+
+def assign_complaint(complaint_id: str, cleaner_id: int) -> dict:
+    """Assign a complaint to a cleaner (creates task and updates status)."""
+    result = _api_patch(f"/api/complaints/{complaint_id}/assign", params={"cleaner_id": cleaner_id})
+    if result is None:
+        return {"success": True, "complaint_id": complaint_id, "cleaner_id": cleaner_id, "status": "ASSIGNED"}
+    return {
+        "success": True,
+        "complaint_id": str(result.get("id")),
+        "status": result.get("status", "ASSIGNED"),
+        "assigned_cleaner": result.get("assigned_cleaner"),
+    }
+
+
+def update_complaint_status(complaint_id: str, new_status: str) -> dict:
+    """Update complaint status (staff/admin)."""
+    result = _api_patch(f"/api/complaints/{complaint_id}/status", params={"new_status": new_status})
+    if result is None:
+        return {"success": True, "complaint_id": complaint_id, "status": new_status}
+    return {
+        "success": True,
+        "complaint_id": str(result.get("id")),
+        "status": result.get("status", new_status),
+    }
+
+
+def get_cleaners() -> list[dict]:
+    """Get active cleaners for assignment dropdown."""
+    result = _api_get("/api/tasks/cleaners")
+    if result is None:
+        return [
+            {"id": 2, "name": "Rajan Pillai", "email": "cleaner@swachhloop.ai", "ward": "Zone B — Thrissur"},
+        ]
+    return [
+        {
+            "id": c.get("id"),
+            "name": c.get("full_name", ""),
+            "email": c.get("email", ""),
+            "ward": c.get("ward") or "—",
+        }
+        for c in result
+    ]
+
+
+def create_admin_user(user_data: dict) -> dict | None:
+    """Admin creates a privileged user account."""
+    return _api_post("/api/admin/users", json=user_data)
+
 
 
 def _fmt_datetime(dt_str: str) -> str:

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "kb_01",
+    "topic": "waste_segregation",
+    "title_en": "Waste Segregation at Source (Wet vs Dry)",
+    "title_ml": "ഉറവിട മാലിന്യ തരംതിരിക്കൽ (നനഞ്ഞതും ഉണങ്ങിയതും)",
+    "content_en": "Household waste must be strictly segregated at source into two categories: 1) Biodegradable / Wet waste (food scraps, vegetable peels, garden waste) which should be composted locally using bio-bins, pipe compost, or biogas units. 2) Non-biodegradable / Dry waste (clean and dry plastics, paper, cardboard, bottles, metal) to be handed over to Haritha Karma Sena.",
+    "content_ml": "വീടുകളിൽ നിന്നുള്ള മാലിന്യങ്ങൾ ഉറവിടത്തിൽ തന്നെ തരംതിരിക്കണം: 1) ജൈവ / നനഞ്ഞ മാലിന്യങ്ങൾ (ഭക്ഷണാവശിഷ്ടങ്ങൾ, പച്ചക്കറി അവശിഷ്ടങ്ങൾ) ബയോബിൻ, പൈപ്പ് കമ്പോസ്റ്റ് അല്ലെങ്കിൽ ബയോഗ്യാസ് പ്ലാന്റ് വഴി സംസ്കരിക്കണം. 2) അജൈവ / ഉണങ്ങിയ മാലിന്യങ്ങൾ (വൃത്തിയുള്ള പ്ലാസ്റ്റിക്, കടലാസ്, കുപ്പികൾ) ഹരിത കർമ്മ സേനയ്ക്ക് കൈമാറണം.",
+    "keywords": ["segregation", "wet waste", "dry waste", "plastic", "organic", "bio-bin", "മാലിന്യ", "തരംതിരിക്കൽ", "നനഞ്ഞ", "ഉണങ്ങിയ"]
+  },
+  {
+    "id": "kb_02",
+    "topic": "haritha_karma_sena",
+    "title_en": "Haritha Karma Sena Collection Schedule & User Fee",
+    "title_ml": "ഹരിത കർമ്മ സേന ശേഖരണ സമയക്രമവും യൂസർ ഫീസും",
+    "content_en": "Haritha Karma Sena visits households in Kalady Grama Panchayat once a month to collect cleaned and dried non-biodegradable plastic waste. A government-approved user fee of ₹50 per household per month is collected. Commercial establishments pay based on volume. Refusing to hand over clean plastic or non-payment of user fee is a violation of Kerala civic bylaws.",
+    "content_ml": "കാലടി ഗ്രാമപഞ്ചായത്തിൽ മാസത്തിലൊരിക്കൽ ഹരിത കർമ്മ സേന വീടുകൾ സന്ദർശിച്ച് കഴുകി ഉണക്കിയ പ്ലാസ്റ്റിക് മാലിന്യങ്ങൾ ശേഖരിക്കുന്നു. പ്രതിമാസം 50 രൂപയാണ് യൂസർ ഫീസായി നിശ്ചയിച്ചിട്ടുള്ളത്. കടകൾക്കും സ്ഥാപനങ്ങൾക്കും മാലിന്യത്തിന്റെ അളവിനനുസരിച്ച് ഫീസ് ബാധകമാണ്.",
+    "keywords": ["haritha karma sena", "collection", "fee", "schedule", "user fee", "hks", "ഹരിത കർമ്മ സേന", "ഫീസ്", "പ്ലാസ്റ്റിക്"]
+  },
+  {
+    "id": "kb_03",
+    "topic": "rrf_and_ewaste",
+    "title_en": "Resource Recovery Facility (RRF) & E-Waste Disposal in Kalady",
+    "title_ml": "കാലടിയിലെ റിസോഴ്സ് റിക്കവറി ഫെസിലിറ്റിയും (RRF) ഇ-മാലിന്യ സംസ്കരണവും",
+    "content_en": "Kalady Grama Panchayat operates a Material Collection Facility (MCF) and Resource Recovery Facility (RRF) near Mattoor. Citizens can drop off sorted recyclable plastics, glass bottles, and electronic waste (e-waste such as old batteries, chargers, CFL bulbs) during regular working hours (9:30 AM to 5:00 PM on weekdays).",
+    "content_ml": "മാറ്റൂരിന് സമീപം കാലടി ഗ്രാമപഞ്ചായത്തിന്റെ മെറ്റീരിയൽ കളക്ഷൻ ഫെസിലിറ്റിയും (MCF) റിസോഴ്സ് റിക്കവറി ഫെസിലിറ്റിയും (RRF) പ്രവർത്തിക്കുന്നു. പഴയ ബാറ്ററികൾ, ഇലക്ട്രോണിക് സാധനങ്ങൾ, കുപ്പികൾ എന്നിവ പ്രവൃത്തി ദിവസങ്ങളിൽ രാവിലെ 9:30 മുതൽ വൈകിട്ട് 5:00 വരെ ഇവിടെ കൈമാറാം.",
+    "keywords": ["rrf", "mcf", "mattoor", "e-waste", "electronics", "glass", "battery", "റിസോഴ്സ് റിക്കവറി", "ഇ-മാലിന്യം"]
+  },
+  {
+    "id": "kb_04",
+    "topic": "plastic_ban_and_penalties",
+    "title_en": "Single-Use Plastic Ban & Penalties for Illegal Dumping",
+    "title_ml": "സിംഗിൾ യൂസ് പ്ലാസ്റ്റിക് നിരോധനവും അനധികൃത മാലിന്യ നിക്ഷേപ പിഴയും",
+    "content_en": "Under the Kerala Panchayat Raj Act and KSPCB directives, single-use plastics under 120 microns, disposable thermocol plates, plastic straws, and non-woven carry bags are banned. Open burning of plastic or dumping waste into the Periyar river or public drains attracts fines ranging from ₹10,000 to ₹50,000 and legal prosecution.",
+    "content_ml": "120 മൈക്രോണിൽ താഴെയുള്ള ഒറ്റത്തവണ ഉപയോഗ പ്ലാസ്റ്റിക് ഉത്പന്നങ്ങൾ, പ്ലാസ്റ്റിക് ക്യാരി ബാഗുകൾ എന്നിവ നിരോധിച്ചിരിക്കുന്നു. പൊതുസ്ഥലങ്ങളിലോ പെരിയാർ നദിയിലോ മാലിന്യം തള്ളുകയോ പ്ലാസ്റ്റിക് കത്തിക്കുകയോ ചെയ്താൽ ₹10,000 മുതൽ ₹50,000 വരെ പിഴയും നിയമനടപടിയും ഉണ്ടാകും.",
+    "keywords": ["ban", "penalty", "fine", "burning", "periyar", "dumping", "single-use plastic", "പിഴ", "നിരോധനം", "കത്തിക്കൽ"]
+  },
+  {
+    "id": "kb_05",
+    "topic": "complaint_reporting",
+    "title_en": "How to Report Garbage Dumps in Kalady",
+    "title_ml": "കാലടിയിൽ മാലിന്യ കൂമ്പാരങ്ങൾ റിപ്പോർട്ട് ചെയ്യുന്ന വിധം",
+    "content_en": "Citizens can report garbage dumps and sanitation hazards directly through the SwachhLoop AI web portal with photo evidence and location details. The system analyzes urgency, alerts municipal sanitation workers, and tracks resolution until verified by photographic proof.",
+    "content_ml": "പൊതുസ്ഥലങ്ങളിലെ മാലിന്യങ്ങൾ ഫോട്ടോയും ലൊക്കേഷനും സഹിതം സ്വച്ഛ്‌ലൂപ്പ് എഐ വെബ്സൈറ്റിലൂടെ നേരിട്ട് റിപ്പോർട്ട് ചെയ്യാം. സിസ്റ്റം അടിയന്തര സ്വഭാവം വിലയിരുത്തി ശുചീകരണ തൊഴിലാളികൾക്ക് നിർദ്ദേശം നൽകുന്നു.",
+    "keywords": ["report", "complaint", "swachhloop", "sanitation", "photo", "റിപ്പോർട്ട്", "പരാതി", "ശുചീകരണം"]
+  }
+]

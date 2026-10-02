@@ -26,7 +26,7 @@ from frontend.components.cards import ai_assessment_card
 from frontend.services.api_client import (
     get_complaints, get_complaint_by_id, get_tasks,
     get_notifications, get_map_markers, get_municipal_stats,
-    get_audit_log,
+    get_audit_log, assign_complaint, update_complaint_status, get_cleaners,
 )
 
 
@@ -336,14 +336,21 @@ def _render_complaint_detail(complaint_id: str) -> None:
         st.markdown('<div class="section-title">Actions</div>', unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
         with col_a:
-            cleaners = ["Rajan Pillai", "Vijayan K.", "Latha S.", "Suresh M."]
-            selected_cleaner = st.selectbox("Assign Cleaner", cleaners, key=f"assign_{complaint_id}")
+            cleaners_list = get_cleaners()
+            cleaner_names = [f"{c['name']} (ID #{c['id']})" for c in cleaners_list] if cleaners_list else ["Rajan Pillai (ID #2)"]
+            selected_cleaner_label = st.selectbox("Assign Cleaner", cleaner_names, key=f"assign_{complaint_id}")
             if st.button("👷 Assign", type="primary", key=f"assign_btn_{complaint_id}", use_container_width=True):
-                st.success(f"Assigned {selected_cleaner} to {complaint_id}. (Demo — Phase 3 writes to DB)")
+                idx = cleaner_names.index(selected_cleaner_label)
+                cleaner_id = cleaners_list[idx]["id"] if cleaners_list else 2
+                res = assign_complaint(complaint_id, cleaner_id)
+                st.success(f"Assigned {selected_cleaner_label} to complaint #{complaint_id}.")
+                st.rerun()
         with col_b:
-            new_priority = st.selectbox("Change Priority", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], key=f"prio_{complaint_id}")
-            if st.button("🔄 Update Priority", key=f"prio_btn_{complaint_id}", use_container_width=True):
-                st.success(f"Priority updated to {new_priority}. (Demo)")
+            new_status_val = st.selectbox("Update Status", ["VALIDATED", "ASSIGNED", "CLEANING", "VERIFICATION", "RESOLVED", "ESCALATED"], key=f"status_sel_{complaint_id}")
+            if st.button("🔄 Update Status", key=f"status_btn_{complaint_id}", use_container_width=True):
+                res = update_complaint_status(complaint_id, new_status_val)
+                st.success(f"Status updated to {new_status_val}.")
+                st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_c, col_d = st.columns(2)
