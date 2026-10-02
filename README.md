@@ -85,7 +85,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full architecture dia
 
 ## AI Components
 
-> Phase 3+ — interfaces are defined in `backend/services/`, implementations come later.
+> Phase 4 — AI service implementation and multi-agent orchestration are the current focus. Check [Issue #4](https://github.com/ik4rthik/SwachhLoop-AI/issues/4) for the active scope.
 
 - Open-source YOLO-family computer vision for waste detection/classification
 - LangGraph multi-agent orchestration
@@ -262,9 +262,9 @@ pytest --asyncio-mode=auto
 |-------|--------|-------------|
 | **Phase 1** | ✅ Complete | Project foundation, structure, config, API skeleton, service interfaces |
 | **Phase 2** | ✅ Complete | Unified frontend — design system, auth UI, role dashboards, complaint forms, mock layer |
-| **Phase 3** | 🔲 Planned | AI agents — waste detection, complaint analysis, Self-Corrective RAG |
-| **Phase 4** | 🔲 Planned | Route optimization, cleanup verification, agent orchestration |
-| **Phase 5** | 🔲 Planned | Evaluation, guardrails, production hardening |
+| **Phase 3** | ✅ Completed | Authentication, database, backend APIs, role-based authorization, and frontend integration |
+| **Phase 4** | 🚧 In progress | AI services and LangGraph multi-agent integration |
+| **Phase 5** | 🔲 Planned | Evaluation, guardrails, and production hardening |
 
 ### Phase 1 Deliverables ✅
 - Project structure and clean service boundaries
@@ -285,6 +285,13 @@ pytest --asyncio-mode=auto
 - Interactive status timelines, KPI cards, and SVG prototype maps
 - Mock data engine (`frontend/data/mock_data.py`) and API service client (`frontend/services/api_client.py`)
 - UI/UX Design System documentation ([`docs/ui-ux.md`](docs/ui-ux.md))
+
+### Phase 3 Deliverables ✅
+- Backend authentication and role-aware authorization for Citizen, Cleaner, Municipal Staff, and Admin
+- Relational database persistence and service/repository boundaries
+- Complaint and cleaning-task APIs and backend/frontend integration
+- Image-storage and AI-service boundaries for future implementation
+- Automated backend tests (reported: 56 passed)
 
 ---
 
