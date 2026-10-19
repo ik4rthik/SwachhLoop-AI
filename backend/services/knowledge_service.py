@@ -4,6 +4,12 @@ SwachhLoop AI — Knowledge & Public Awareness Service (RAG)
 Provides retrieval-augmented generation and guidance for civic waste
 management queries, with bilingual English and Malayalam support
 for Kalady Grama Panchayat.
+
+Phase 5 Hardening:
+  - Strict separation of retrieval and response generation.
+  - Relevance score thresholding & explicit insufficient-context fallback.
+  - Prompt-injection defense on queries and retrieved document text.
+  - Grounding verification & context tracking to prevent hallucination.
 """
 
 from abc import ABC, abstractmethod
@@ -12,6 +18,13 @@ import json
 import logging
 from pathlib import Path
 import re
+
+from backend.core.config import settings
+from backend.core.guardrails import (
+    validate_rag_query_input,
+    sanitize_untrusted_text,
+    evaluate_rag_groundedness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +49,7 @@ class RAGResponse:
     source_articles: list[dict]
     found_knowledge: bool
     notes: str = ""
+    grounding_score: float = 1.0
 
 
 class KnowledgeRetrieverService(ABC):
@@ -47,8 +61,18 @@ class KnowledgeRetrieverService(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def generate_answer(
+        self,
+        query: str,
+        retrieved: list[KnowledgeArticle],
+        language: str | None = None,
+    ) -> RAGResponse:
+        """Generate a grounded public awareness answer using retrieved knowledge articles."""
+        raise NotImplementedError
+
+    @abstractmethod
     async def answer_query(self, query: str, language: str | None = None) -> RAGResponse:
-        """Generate a grounded public awareness answer using retrieved knowledge."""
+        """End-to-end pipeline: retrieve relevant context then generate a grounded answer."""
         raise NotImplementedError
 
 
@@ -95,11 +119,28 @@ class LocalKnowledgeRetriever(KnowledgeRetrieverService):
         return "en"
 
     async def retrieve(self, query: str, top_k: int = 3) -> list[KnowledgeArticle]:
-        if not self.articles or not query.strip():
+        if not self.articles or not query or not query.strip():
             return []
 
-        lang = self.detect_language(query)
-        q_tokens = set(re.findall(r"[\w\u0D00-\u0D7F]+", query.lower()))
+        # Validate input and sanitize
+        validation = validate_rag_query_input(query)
+        if "PROMPT_INJECTION_DETECTED" in validation.flags:
+            logger.warning("RAG query contained prompt injection attempt: %s", validation.warning_or_error)
+            return []
+
+        clean_query = validation.sanitized_content if validation.is_valid else sanitize_untrusted_text(query)
+        if not clean_query:
+            return []
+
+        civic_stopwords = {
+            "kalady", "grama", "panchayat", "kerala", "how", "what", "where", "when",
+            "which", "who", "why", "the", "and", "for", "with", "from", "near",
+            "have", "has", "can", "should", "about", "your", "into", "apply", "does",
+            "കാലടി", "ഗ്രാമ", "പഞ്ചായത്ത്", "എങ്ങനെ", "എവിടെ", "എന്ത്", "ആണ്"
+        }
+
+        lang = self.detect_language(clean_query)
+        q_tokens = set(re.findall(r"[\w\u0D00-\u0D7F]+", clean_query.lower()))
         scored: list[tuple[float, KnowledgeArticle]] = []
 
         for art in self.articles:
@@ -109,19 +150,19 @@ class LocalKnowledgeRetriever(KnowledgeRetrieverService):
 
             # Match against keywords
             for kw in art.keywords:
-                if kw.lower() in query.lower():
+                if kw.lower() in clean_query.lower():
                     score += 2.5
 
-            # Match individual tokens
+            # Match specific, informative tokens
             for token in q_tokens:
-                if len(token) > 2:
+                if len(token) > 2 and token not in civic_stopwords:
                     if token in title:
                         score += 3.0
                     elif token in content:
                         score += 1.0
 
             if score > 0.0:
-                # Normalize score
+                # Normalize score to [0.0, 1.0]
                 norm_score = min(1.0, round(score / 10.0, 2))
                 art_copy = KnowledgeArticle(
                     id=art.id,
@@ -138,7 +179,86 @@ class LocalKnowledgeRetriever(KnowledgeRetrieverService):
         scored.sort(key=lambda x: x[0], reverse=True)
         return [item[1] for item in scored[:top_k]]
 
+    async def generate_answer(
+        self,
+        query: str,
+        retrieved: list[KnowledgeArticle],
+        language: str | None = None,
+    ) -> RAGResponse:
+        """
+        Generate grounded response from retrieved articles, enforcing relevance thresholds
+        and explicit fallback when insufficient context is available.
+        """
+        lang = language or self.detect_language(query)
+
+        # Fallback messages
+        not_found_ml = (
+            "ക്ഷമിക്കണം, ഈ ചോദ്യത്തിനുള്ള ഔദ്യോഗിക വിവരങ്ങൾ പഞ്ചായത്ത് നോളഡ്ജ് ബേസിൽ ലഭ്യമല്ല. "
+            "ദയവായി പഞ്ചായത്ത് ഓഫീസുമായി ബന്ധപ്പെടുക."
+        )
+        not_found_en = (
+            "No matching civic guidance found in the Kalady municipal knowledge base for your inquiry. "
+            "Please consult the Kalady Grama Panchayat Office."
+        )
+
+        if not retrieved:
+            return RAGResponse(
+                query=query,
+                language=lang,
+                answer=not_found_ml if lang == "ml" else not_found_en,
+                source_articles=[],
+                found_knowledge=False,
+                notes="No articles matched query keywords.",
+                grounding_score=0.0,
+            )
+
+        top_article = retrieved[0]
+        # Check relevance threshold to avoid returning irrelevant snippets
+        if top_article.relevance_score < settings.rag_relevance_threshold:
+            return RAGResponse(
+                query=query,
+                language=lang,
+                answer=not_found_ml if lang == "ml" else not_found_en,
+                source_articles=[],
+                found_knowledge=False,
+                notes=f"Retrieved articles below relevance threshold ({top_article.relevance_score} < {settings.rag_relevance_threshold}).",
+                grounding_score=0.0,
+            )
+
+        # Sanitize article content to neutralize any hostile prompt injection in external docs
+        raw_answer = top_article.content_ml if lang == "ml" else top_article.content_en
+        answer_text = sanitize_untrusted_text(raw_answer)
+
+        sources = [
+            {
+                "id": a.id,
+                "title": a.title_ml if lang == "ml" else a.title_en,
+                "topic": a.topic,
+                "relevance": a.relevance_score,
+                "content": a.content_ml if lang == "ml" else a.content_en,
+            }
+            for a in retrieved
+        ]
+
+        # Verify grounding against retrieved sources
+        is_grounded, grounding_score, g_note = evaluate_rag_groundedness(
+            answer=answer_text,
+            retrieved_sources=sources,
+            language=lang,
+        )
+
+        return RAGResponse(
+            query=query,
+            language=lang,
+            answer=answer_text,
+            source_articles=sources,
+            found_knowledge=True,
+            notes=f"Retrieved from Kalady Grama Panchayat official knowledge base. {g_note}",
+            grounding_score=grounding_score,
+        )
+
     async def answer_query(self, query: str, language: str | None = None) -> RAGResponse:
+        """Separable pipeline: retrieve first, then generate."""
         if not self.knowledge_path.exists() or not self.articles:
             return RAGResponse(
                 query=query,
@@ -147,50 +267,13 @@ class LocalKnowledgeRetriever(KnowledgeRetrieverService):
                 source_articles=[],
                 found_knowledge=False,
                 notes="Knowledge base file is missing.",
+                grounding_score=0.0,
             )
 
-        lang = language or self.detect_language(query)
         retrieved = await self.retrieve(query, top_k=2)
-
-        if not retrieved:
-            fallback_msg = (
-                "ക്ഷമിക്കണം, ഈ ചോദ്യത്തിനുള്ള ഔദ്യോഗിക വിവരങ്ങൾ പഞ്ചായത്ത് നോളഡ്ജ് ബേസിൽ ലഭ്യമല്ല. ദയവായി പഞ്ചായത്ത് ഓഫീസുമായി ബന്ധപ്പെടുക."
-                if lang == "ml"
-                else "No matching civic guidance found in the Kalady municipal knowledge base for your inquiry. Please consult the Kalady Grama Panchayat Office."
-            )
-            return RAGResponse(
-                query=query,
-                language=lang,
-                answer=fallback_msg,
-                source_articles=[],
-                found_knowledge=False,
-                notes="No articles matched query keywords.",
-            )
-
-        top_article = retrieved[0]
-        answer_text = top_article.content_ml if lang == "ml" else top_article.content_en
-
-        sources = [
-            {
-                "id": a.id,
-                "title": a.title_ml if lang == "ml" else a.title_en,
-                "topic": a.topic,
-                "relevance": a.relevance_score,
-            }
-            for a in retrieved
-        ]
-
-        return RAGResponse(
-            query=query,
-            language=lang,
-            answer=answer_text,
-            source_articles=sources,
-            found_knowledge=True,
-            notes="Retrieved from Kalady Grama Panchayat official knowledge base.",
-        )
+        return await self.generate_answer(query, retrieved, language=language)
 
 
 def get_knowledge_service() -> KnowledgeRetrieverService:
     """Factory to get the knowledge retriever service instance."""
-    from backend.core.config import settings
     return LocalKnowledgeRetriever(knowledge_path=settings.rag_knowledge_path)

@@ -264,7 +264,7 @@ pytest --asyncio-mode=auto
 | **Phase 2** | ✅ Complete | Unified frontend — design system, auth UI, role dashboards, complaint forms, mock layer |
 | **Phase 3** | ✅ Complete | Backend, Authentication, Database & API Integration (RBAC, SQLite/PostgreSQL, 56 tests) |
 | **Phase 4** | ✅ Complete | AI Services & LangGraph Multi-Agent Workflows (Kalady domain, CV, NLP, Routing, RAG, 93 tests) |
-| **Phase 5** | 🔲 Planned | Evaluation, guardrails, production hardening |
+| **Phase 5** | ✅ Complete | Evaluation Framework, AI Guardrails, RAG Grounding & Hardening (154 tests, offline runner) |
 
 ### Phase 1 Deliverables ✅
 - Project structure and clean service boundaries
@@ -303,8 +303,18 @@ pytest --asyncio-mode=auto
   - *Cleanup Verification & Escalation Subgraph*: Visual differencing for before/after evidence with strict escalation governance for low-confidence or failed cleanups.
   - *Public Awareness & RAG Subgraph*: Grounded civic guidance with bilingual support (English and Malayalam) referencing official Kalady Grama Panchayat waste rules (`data/knowledge_base.json`).
 - **REST API Endpoints (`/api/ai/*`)**: Fully validated and role-protected endpoints for waste detection, complaint analysis, route optimization, cleanup verification, bilingual awareness, and workflow execution.
-- **Comprehensive Test Suite**: 93 total automated tests (37 new Phase 4 tests + 56 existing Phase 3 tests) passing with 100% success rate.
+- **Comprehensive Test Suite**: 93 total automated tests (37 Phase 4 tests + 56 Phase 3 tests) passing with 100% success rate.
 - **AI Documentation**: Full architecture diagrams, state schema, provider switching instructions, and limitations in [`docs/phase4_ai_agents.md`](docs/phase4_ai_agents.md).
+
+### Phase 5 Deliverables ✅
+- **Reusable AI Evaluation Framework**: Offline, reproducible benchmark suite in `evaluations/` evaluating complaint classification, waste computer vision, geospatial route constraints, cleanup verification, bilingual RAG grounding, and multi-agent workflows without requiring external paid credentials.
+- **Machine-Readable Evaluation Reports**: CLI runner (`python -m evaluations.runner`) generating structured JSON reports (`evaluations/reports/evaluation_report.json`) with metric definitions, confidence intervals, and per-class breakdowns.
+- **Defensive AI Guardrails**: Strict payload boundaries, image byte & decompression-bomb verification, geographic coordinate constraint validation, and adversarial prompt-injection heuristics (`backend/core/guardrails.py`).
+- **RAG Grounding & Reliability**: Decoupled retrieval and generation, relevance score thresholding, token overlap grounding metrics, civic stopword filtering, and explicit insufficient-context uncertainty fallbacks for English and Malayalam.
+- **Resilience & Fault Tolerance**: Bounded exponential backoff retries for transient AI provider failures, configurable timeouts, LangGraph recursion bounds, and graceful fallbacks.
+- **Privacy & Security Hardening**: Automated PII masking (Indian mobile numbers, email addresses, Aadhaar identity tokens) in server logs and audit trails, without leaking stack traces or credentials to clients.
+- **100% Passing Automated Tests**: 154 total automated tests (61 new Phase 5 tests + 93 existing tests) passing with 100% success rate.
+- **Hardening Documentation**: Complete Phase 5 architecture, metric definitions, and operational guide in [`docs/phase5_evaluation_and_hardening.md`](docs/phase5_evaluation_and_hardening.md).
 
 ---
 

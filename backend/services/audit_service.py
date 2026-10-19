@@ -36,24 +36,27 @@ async def log_event(
     resource_id: str | None = None,
     detail: str | None = None,
     ip_address: str | None = None,
-) -> None:
+):
     """
-    Write an audit log entry.
+    Write an audit log entry with automated PII sanitization.
     Failures are logged but never raise — audit logging must not break user flows.
     """
     try:
-        await log_action(
+        from backend.core.guardrails import sanitize_pii
+        safe_detail = sanitize_pii(detail) if detail else None
+        return await log_action(
             db=db,
             action=action,
             actor_id=actor_id,
             resource_type=resource_type,
             resource_id=resource_id,
-            detail=detail,
+            detail=safe_detail,
             ip_address=ip_address,
         )
     except Exception as exc:  # pragma: no cover
         import logging
         logging.getLogger(__name__).error(f"Audit log write failed: {exc}")
+        return None
 
 
 class AuditService:

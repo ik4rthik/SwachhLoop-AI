@@ -73,6 +73,20 @@ class Settings(BaseSettings):
     default_depot_lon: float = Field(default=76.4333)
     cleanup_verification_threshold: float = Field(default=0.60)
 
+    # --- AI Guardrails, Resilience & Hardening (Phase 5) ---
+    ai_request_timeout_seconds: float = Field(default=15.0)
+    ai_max_retries: int = Field(default=3)
+    ai_retry_backoff_factor: float = Field(default=1.5)
+    max_image_upload_bytes: int = Field(default=10 * 1024 * 1024)  # 10 MB limit
+    max_complaint_text_length: int = Field(default=5000)
+    max_route_stops: int = Field(default=50)
+    max_rag_query_length: int = Field(default=1000)
+    rag_relevance_threshold: float = Field(default=0.25)
+    guardrails_enabled: bool = Field(default=True)
+    sanitize_logs_pii: bool = Field(default=True)
+    workflow_recursion_limit: int = Field(default=25)
+    workflow_max_steps: int = Field(default=15)
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton — import this everywhere instead of re-instantiating

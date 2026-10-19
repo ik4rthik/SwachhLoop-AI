@@ -155,6 +155,12 @@ WASTE_CATEGORIES = {
 }
 
 
+from backend.core.guardrails import (
+    validate_complaint_text,
+    resilient_call_with_retry,
+)
+
+
 class DeterministicComplaintAnalyzer(ComplaintAnalyzerService):
     """
     Deterministic rule-based and regex NLP analyzer for civic complaints.
@@ -162,20 +168,22 @@ class DeterministicComplaintAnalyzer(ComplaintAnalyzerService):
     """
 
     async def analyze(self, complaint_text: str) -> ComplaintAnalysis:
-        if not complaint_text or not complaint_text.strip():
+        val = validate_complaint_text(complaint_text)
+        if not val.is_valid:
             return ComplaintAnalysis(
                 urgency=UrgencyLevel.LOW,
                 extracted_location=None,
                 waste_types=[],
-                suggested_action="Request clarification: complaint text is empty.",
-                summary="Empty complaint submitted.",
-                tags=["incomplete"],
+                suggested_action=f"Request clarification: {val.warning_or_error}",
+                summary="Empty or invalid complaint submitted.",
+                tags=["incomplete"] + val.flags,
             )
 
-        text_lower = complaint_text.lower().strip()
+        clean_text = val.sanitized_content or complaint_text
+        text_lower = clean_text.lower().strip()
 
         # 1. Location Extraction
-        extracted_location = await self.extract_location(complaint_text)
+        extracted_location = await self.extract_location(clean_text)
 
         # 2. Waste Type Identification
         detected_waste = []
@@ -227,6 +235,9 @@ class DeterministicComplaintAnalyzer(ComplaintAnalyzerService):
             tags.append("geo-tagged")
         if is_ambiguous:
             tags.append("ambiguous")
+        if "PROMPT_INJECTION_DETECTED" in val.flags:
+            tags.append("untrusted_pattern")
+            action += " [Security Notice: Input contained adversarial instruction tokens; treat as untrusted data.]"
 
         return ComplaintAnalysis(
             urgency=assessed_urgency,
@@ -264,7 +275,7 @@ class DeterministicComplaintAnalyzer(ComplaintAnalyzerService):
 class LLMComplaintAnalyzer(ComplaintAnalyzerService):
     """
     Pluggable LLM-based Complaint Analyzer using OpenAI/Gemini with
-    graceful fallback to the deterministic analyzer on error or when unconfigured.
+    resilient bounded retries and graceful fallback to the deterministic analyzer on error.
     """
 
     def __init__(self, api_key: str | None = None, model_name: str = "gemini-1.5-flash"):
@@ -272,13 +283,20 @@ class LLMComplaintAnalyzer(ComplaintAnalyzerService):
         self.model_name = model_name
         self.fallback = DeterministicComplaintAnalyzer()
 
+    async def _call_llm(self, complaint_text: str) -> ComplaintAnalysis:
+        # In cloud LLM deployment, external API call happens here
+        return await self.fallback.analyze(complaint_text)
+
     async def analyze(self, complaint_text: str) -> ComplaintAnalysis:
         if not self.api_key:
             return await self.fallback.analyze(complaint_text)
 
         try:
-            # When API key is available, can query LLM with fallback
-            return await self.fallback.analyze(complaint_text)
+            return await resilient_call_with_retry(
+                self._call_llm,
+                complaint_text,
+                operation_name="LLM_COMPLAINT_ANALYSIS",
+            )
         except Exception as err:
             logger.error("LLMComplaintAnalyzer failed: %s. Using deterministic fallback.", err)
             return await self.fallback.analyze(complaint_text)

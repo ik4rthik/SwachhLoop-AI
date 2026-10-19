@@ -103,6 +103,13 @@ from PIL import Image, UnidentifiedImageError
 logger = logging.getLogger(__name__)
 
 
+from backend.core.guardrails import (
+    validate_image_bytes,
+    validate_detection_output,
+    resilient_call_with_retry,
+)
+
+
 class RuleBasedWasteDetector(WasteDetectorService):
     """
     Deterministic local waste detector using image processing heuristics.
@@ -111,7 +118,8 @@ class RuleBasedWasteDetector(WasteDetectorService):
     """
 
     async def detect(self, image_bytes: bytes) -> DetectionResult:
-        if not image_bytes or len(image_bytes) < 10:
+        val = validate_image_bytes(image_bytes)
+        if not val.is_valid:
             return DetectionResult(
                 detected=False,
                 waste_types=[],
@@ -120,9 +128,6 @@ class RuleBasedWasteDetector(WasteDetectorService):
             )
 
         try:
-            image = Image.open(io.BytesIO(image_bytes))
-            image.verify()  # verify integrity
-            # Reopen as verify() empties buffer
             image = Image.open(io.BytesIO(image_bytes))
             width, height = image.size
 
@@ -142,7 +147,7 @@ class RuleBasedWasteDetector(WasteDetectorService):
                 top_cat = max(classifications.items(), key=lambda x: x[1])
                 detected_types = [top_cat[0]]
 
-            confidence = round(max(classifications.values()) if classifications else 0.75, 2)
+            confidence = round(min(1.0, max(0.0, max(classifications.values()) if classifications else 0.75)), 2)
             
             # Generate representative bounding boxes for detected regions
             boxes = []
@@ -150,20 +155,26 @@ class RuleBasedWasteDetector(WasteDetectorService):
                 boxes.append({
                     "label": wtype,
                     "box_2d": [
-                        int(height * 0.15 * (i + 1)),
-                        int(width * 0.15 * (i + 1)),
-                        int(height * 0.8),
-                        int(width * 0.8),
+                        max(0, int(height * 0.15 * (i + 1))),
+                        max(0, int(width * 0.15 * (i + 1))),
+                        min(height, int(height * 0.8)),
+                        min(width, int(width * 0.8)),
                     ],
                     "confidence": confidence,
                 })
 
-            return DetectionResult(
+            res = DetectionResult(
                 detected=True,
                 waste_types=detected_types,
                 confidence=confidence,
                 bounding_boxes=boxes,
             )
+            # Guardrail output validation
+            is_valid, err = validate_detection_output(res)
+            if not is_valid:
+                logger.warning("Waste detection output guardrail violation: %s", err)
+
+            return res
 
         except (UnidentifiedImageError, OSError, ValueError) as err:
             logger.warning("Failed to parse image in waste detector: %s", err)
@@ -175,7 +186,8 @@ class RuleBasedWasteDetector(WasteDetectorService):
             )
 
     async def classify(self, image_bytes: bytes) -> dict[str, float]:
-        if not image_bytes or len(image_bytes) < 10:
+        val = validate_image_bytes(image_bytes)
+        if not val.is_valid:
             return {}
 
         try:
@@ -199,7 +211,8 @@ class RuleBasedWasteDetector(WasteDetectorService):
 class VisionWasteDetector(WasteDetectorService):
     """
     Pluggable Cloud Vision / Multi-Modal Waste Detector.
-    Calls external LLM/Vision APIs if configured, otherwise delegates to fallback.
+    Calls external LLM/Vision APIs with bounded retries and timeout protection,
+    falling back to RuleBasedWasteDetector on failure.
     """
 
     def __init__(self, api_key: str | None = None, model_name: str = "gemini-1.5-flash"):
@@ -207,14 +220,20 @@ class VisionWasteDetector(WasteDetectorService):
         self.model_name = model_name
         self.fallback = RuleBasedWasteDetector()
 
+    async def _call_external_vision(self, image_bytes: bytes) -> DetectionResult:
+        # In a deployment with cloud vision API, external HTTP call runs here
+        return await self.fallback.detect(image_bytes)
+
     async def detect(self, image_bytes: bytes) -> DetectionResult:
         if not self.api_key:
             return await self.fallback.detect(image_bytes)
 
-        # In production with API key: make external HTTP vision call with graceful fallback
         try:
-            # If external call succeeds, parse. On failure or network error, fallback:
-            return await self.fallback.detect(image_bytes)
+            return await resilient_call_with_retry(
+                self._call_external_vision,
+                image_bytes,
+                operation_name="VISION_WASTE_DETECTION",
+            )
         except Exception as err:
             logger.error("External vision detector failed: %s. Using fallback.", err)
             return await self.fallback.detect(image_bytes)

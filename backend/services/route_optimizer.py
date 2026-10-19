@@ -218,12 +218,19 @@ class NearestNeighborRouteOptimizer(RouteOptimizerService):
         coords = [f"{loc.latitude:.5f},{loc.longitude:.5f}" for loc in ordered]
         polyline_repr = " -> ".join(coords)
 
-        return OptimizationResult(
+        res = OptimizationResult(
             ordered_locations=ordered,
-            estimated_distance_km=round(total_distance, 2),
-            estimated_duration_min=total_duration,
+            estimated_distance_km=round(max(0.0, total_distance), 2),
+            estimated_duration_min=max(0.0, total_duration),
             route_polyline=polyline_repr,
         )
+
+        from backend.core.guardrails import validate_route_constraints
+        is_valid, violations = validate_route_constraints(res, expected_stop_count=len(valid_locations))
+        if not is_valid:
+            logger.warning("Route constraint warnings: %s", violations)
+
+        return res
 
     async def estimate_travel_time(
         self,

@@ -12,6 +12,8 @@ from typing import Any
 
 from langgraph.graph import StateGraph, START, END
 
+from backend.core.config import settings
+from backend.core.guardrails import sanitize_pii
 from backend.agents.state import SwachhLoopState
 from backend.agents.complaint_subgraph import build_complaint_subgraph
 from backend.agents.logistics_subgraph import build_logistics_subgraph
@@ -28,9 +30,20 @@ _awareness_subgraph = build_awareness_subgraph()
 
 
 async def router_node(state: SwachhLoopState) -> dict:
-    """Entry node: initializes identifiers and validates task type."""
+    """Entry node: initializes identifiers, bounds execution, and validates task type."""
     workflow_id = state.get("workflow_id") or f"wf_{uuid.uuid4().hex[:10]}"
     audit = list(state.get("audit_trail") or [])
+
+    # Guardrail: Check maximum steps bound
+    if len(audit) >= settings.workflow_max_steps:
+        logger.warning("Workflow %s exceeded max execution steps (%d)", workflow_id, settings.workflow_max_steps)
+        return {
+            "current_node": "router_node",
+            "status": "ERROR",
+            "error_message": f"Workflow execution exceeded max steps limit ({settings.workflow_max_steps}).",
+            "requires_human_review": True,
+            "review_reason": "Execution steps limit exceeded.",
+        }
 
     task_type = state.get("task_type") or "UNKNOWN"
     audit.append({
@@ -38,7 +51,7 @@ async def router_node(state: SwachhLoopState) -> dict:
         "node_name": "router_node",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "SUCCESS",
-        "detail": f"Workflow {workflow_id} routing task type: {task_type}",
+        "detail": sanitize_pii(f"Workflow {workflow_id} routing task type: {task_type}"),
     })
 
     return {
@@ -187,19 +200,20 @@ async def governance_node(state: SwachhLoopState) -> dict:
 
 def _handle_subgraph_error(state: SwachhLoopState, node_name: str, err: Exception) -> dict:
     audit = list(state.get("audit_trail") or [])
+    safe_err = sanitize_pii(str(err))
     audit.append({
         "step_id": f"step_err_{len(audit)+1}",
         "node_name": node_name,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "FAILED",
-        "detail": f"Subagent error: {str(err)}",
+        "detail": f"Subagent error: {safe_err}",
     })
     return {
         "current_node": node_name,
         "status": "ERROR",
-        "error_message": str(err),
+        "error_message": safe_err,
         "requires_human_review": True,
-        "review_reason": f"Agent {node_name} encountered an error: {str(err)}",
+        "review_reason": f"Agent {node_name} encountered an error: {safe_err}",
         "audit_trail": audit,
     }
 
@@ -279,5 +293,8 @@ async def run_swachhloop_workflow(task_type: str, **kwargs: Any) -> SwachhLoopSt
         "audit_trail": [],
     }
 
-    result = await orchestrator_graph.ainvoke(initial_state)
+    result = await orchestrator_graph.ainvoke(
+        initial_state,
+        config={"recursion_limit": settings.workflow_recursion_limit},
+    )
     return result

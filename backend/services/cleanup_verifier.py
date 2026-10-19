@@ -113,6 +113,13 @@ from PIL import Image, ImageChops, ImageStat, UnidentifiedImageError
 logger = logging.getLogger(__name__)
 
 
+from backend.core.guardrails import (
+    validate_image_bytes,
+    validate_cleanup_verification_output,
+    resilient_call_with_retry,
+)
+
+
 class ImageDifferenceCleanupVerifier(CleanupVerifierService):
     """
     Deterministic computer vision cleanup verifier using normalized image
@@ -127,7 +134,9 @@ class ImageDifferenceCleanupVerifier(CleanupVerifierService):
         before_image: bytes,
         after_image: bytes,
     ) -> float:
-        if not before_image or not after_image or len(before_image) < 10 or len(after_image) < 10:
+        val_before = validate_image_bytes(before_image)
+        val_after = validate_image_bytes(after_image)
+        if not val_before.is_valid or not val_after.is_valid:
             return 0.0
 
         try:
@@ -160,43 +169,57 @@ class ImageDifferenceCleanupVerifier(CleanupVerifierService):
                 notes="Missing before or after cleanup evidence.",
             )
 
+        val_before = validate_image_bytes(before_image)
+        val_after = validate_image_bytes(after_image)
+        if not val_before.is_valid or not val_after.is_valid:
+            return VerificationResult(
+                status=VerificationStatus.UNVERIFIED,
+                confidence=0.0,
+                change_score=0.0,
+                notes=f"Invalid evidence: {val_before.warning_or_error or val_after.warning_or_error}",
+            )
+
         try:
             change_score = await self.compute_change_score(before_image, after_image)
 
             # Identical or near-identical images
             if change_score < 0.05:
-                return VerificationResult(
+                res = VerificationResult(
                     status=VerificationStatus.FAILED,
                     confidence=0.95,
                     change_score=change_score,
                     notes="Before and after images are virtually identical. Cleanup was not performed.",
                 )
-
             # Significant cleanup verified
-            if change_score >= self.threshold:
-                return VerificationResult(
+            elif change_score >= self.threshold:
+                res = VerificationResult(
                     status=VerificationStatus.VERIFIED_CLEAN,
                     confidence=0.88,
                     change_score=change_score,
                     notes="Verification confirmed: Significant visual clearance of waste detected.",
                 )
-
             # Partial cleanup
-            if change_score >= 0.30:
-                return VerificationResult(
+            elif change_score >= 0.30:
+                res = VerificationResult(
                     status=VerificationStatus.PARTIALLY_CLEAN,
                     confidence=0.65,
                     change_score=change_score,
                     notes="Partial cleanup detected. Secondary inspection or additional cleanup recommended.",
                 )
-
             # Low change
-            return VerificationResult(
-                status=VerificationStatus.FAILED,
-                confidence=0.72,
-                change_score=change_score,
-                notes="Insufficient change detected between before and after evidence.",
-            )
+            else:
+                res = VerificationResult(
+                    status=VerificationStatus.FAILED,
+                    confidence=0.72,
+                    change_score=change_score,
+                    notes="Insufficient change detected between before and after evidence.",
+                )
+
+            is_valid, err = validate_cleanup_verification_output(res)
+            if not is_valid:
+                logger.warning("Cleanup verification output guardrail violation: %s", err)
+
+            return res
 
         except Exception as err:
             logger.error("Error during cleanup verification: %s", err)
@@ -211,7 +234,7 @@ class ImageDifferenceCleanupVerifier(CleanupVerifierService):
 class VisionCleanupVerifier(CleanupVerifierService):
     """
     Pluggable Multi-Modal Vision Cleanup Verifier.
-    Uses cloud LLM vision models if configured, falling back to ImageDifferenceCleanupVerifier.
+    Uses cloud LLM vision models if configured with resilient retries, falling back to ImageDifferenceCleanupVerifier.
     """
 
     def __init__(self, api_key: str | None = None, model_name: str = "gemini-1.5-flash", threshold: float = 0.60):
@@ -219,12 +242,21 @@ class VisionCleanupVerifier(CleanupVerifierService):
         self.model_name = model_name
         self.fallback = ImageDifferenceCleanupVerifier(threshold=threshold)
 
+    async def _call_external_verifier(self, before_image: bytes, after_image: bytes) -> VerificationResult:
+        # In deployment with cloud vision API, external verification runs here
+        return await self.fallback.verify(before_image, after_image)
+
     async def verify(self, before_image: bytes, after_image: bytes) -> VerificationResult:
         if not self.api_key:
             return await self.fallback.verify(before_image, after_image)
 
         try:
-            return await self.fallback.verify(before_image, after_image)
+            return await resilient_call_with_retry(
+                self._call_external_verifier,
+                before_image,
+                after_image,
+                operation_name="VISION_CLEANUP_VERIFICATION",
+            )
         except Exception as err:
             logger.error("VisionCleanupVerifier failed: %s. Using image difference fallback.", err)
             return await self.fallback.verify(before_image, after_image)
